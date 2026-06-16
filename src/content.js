@@ -4177,9 +4177,36 @@
 
   function detectDungeonByGame(game) {
     const haystack = normalizeName(`${game.room || ''} ${game.href || ''}`);
-    return DUNGEONS.find(dungeon => {
-      return [dungeon.title, ...(dungeon.aliases || [])].some(alias => haystack.includes(normalizeName(alias)));
-    }) || null;
+    if (!haystack) return null;
+    let best = null;
+    for (const dungeon of DUNGEONS) {
+      const score = scoreDungeonMatch(dungeon, haystack);
+      if (score > 0 && (!best || score > best.score)) {
+        best = { dungeon, score };
+      }
+    }
+    return best ? best.dungeon : null;
+  }
+
+  function scoreDungeonMatch(dungeon, haystack) {
+    const title = normalizeName(dungeon.title || '');
+    const aliases = [dungeon.title, ...(dungeon.aliases || [])];
+    let best = 0;
+    for (const alias of aliases) {
+      const value = normalizeName(alias);
+      if (!value || isGenericDungeonAlias(value) || !haystack.includes(value)) continue;
+      const wordCount = value.split(/\s+/).filter(Boolean).length;
+      let score = value.length;
+      if (value === title) score += 100;
+      if (wordCount > 1) score += 20;
+      if (value.length <= 4) score -= 5;
+      best = Math.max(best, score);
+    }
+    return best;
+  }
+
+  function isGenericDungeonAlias(value) {
+    return /^этаж\s+\d+\s*-?$/.test(value) || /^этап\s+\d+\s*-?$/.test(value);
   }
 
   function getCurrentDungeon() {
