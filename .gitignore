@@ -1,0 +1,19 @@
+# Local and generated files
+tmp/
+node_modules/
+dist/
+build/
+
+# Browser extension packages and private signing keys
+*.zip
+*.rar
+*.7z
+*.crx
+*.pem
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
