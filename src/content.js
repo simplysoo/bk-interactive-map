@@ -520,11 +520,7 @@
     runtime.state.selectedCoord = target;
     setOptimisticPosition(target, direction, token, now + 2400, current);
     if (runtime.state.targetCoord) {
-      let route = buildShortestRoute(map, target, runtime.state.targetCoord);
-      runtime.state.routeBlocked = !route.length || route[route.length - 1] !== runtime.state.targetCoord;
-      if (runtime.state.routeBlocked) route = [target, runtime.state.targetCoord].filter(Boolean);
-      runtime.state.route = route;
-      runtime.state.routeStartCoord = target;
+      updateRouteFromStart(map, target);
     }
     saveStateSoon();
     if (!applyFastMapUpdate()) queueRender();
@@ -1208,17 +1204,10 @@
       const map = getCurrentMap();
       if (!coord || !map || !map.cells.has(coord)) return;
       const start = getRouteStartCoord(map);
-      let route = buildShortestRoute(map, start, coord);
-      const blocked = !route.length || route[route.length - 1] !== coord;
-      if (blocked) route = [start, coord].filter(Boolean);
-      runtime.state.selectedCoord = coord;
-      runtime.state.targetCoord = coord;
-      runtime.state.routeStartCoord = start;
-      runtime.state.route = route;
-      runtime.state.routeBlocked = blocked;
+      const info = setRouteToSelection(map, start, coord);
       saveStateSoon();
-      centerOnCoord(coord);
-      queueRender(`Маршрут до ${coord}: ${runtime.state.route.length} шагов`);
+      centerOnCoord((info && info.targetCoord) || coord);
+      queueRender(formatRouteStatus(info, coord));
       return;
     }
   }
@@ -1247,6 +1236,7 @@
     const floor = getCurrentFloor();
     if (!dungeon || !floor) return;
     const key = mapKey(dungeon.id, floor.id);
+    pruneMapCacheToCurrent();
     if (!force && runtime.mapByKey.has(key)) {
       queueRender();
       return;
@@ -1258,6 +1248,7 @@
       scheduleMapLoad.timer = setTimeout(() => {
         scheduleMapLoad.timer = 0;
         loadCurrentFloor(force).then(map => {
+          if (map && getCurrentMapKey() !== key) return;
           if (map) {
             requestBridgeState(true);
             scheduleGameSync('bridge', true);
@@ -1364,17 +1355,20 @@
     setStatus(`Открываю ${dungeon.title}, ${floor.title}`);
     const promise = loadPreloadedMap(dungeon, floor)
       .then(async preloaded => {
+        let loaded = preloaded;
         if (preloaded) {
-          runtime.mapByKey.set(key, preloaded);
-          invalidateCellCaches();
-          return preloaded;
+          loaded = preloaded;
+        } else {
+          const text = await fetchPaladins(floor.url, force);
+          loaded = parsePaladinsMap(text, dungeon, floor);
+          loaded.source = 'paladins';
         }
-        const text = await fetchPaladins(floor.url, force);
-        const parsed = parsePaladinsMap(text, dungeon, floor);
-        parsed.source = 'paladins';
-        runtime.mapByKey.set(key, parsed);
-        invalidateCellCaches();
-        return parsed;
+        if (getCurrentMapKey() === key) {
+          runtime.mapByKey.set(key, loaded);
+          pruneMapCacheToCurrent();
+          invalidateCellCaches();
+        }
+        return loaded;
       })
       .catch(error => {
         setStatus(`Карта не загружена: ${formatError(error)}`);
@@ -2754,7 +2748,7 @@
     if (!route.length) {
       return '<div class="bkpm-muted">Кликни по клетке для маршрута до нее или нажми «Маршрут этажа».</div>';
     }
-    const target = runtime.state.targetCoord ? `Цель: ${runtime.state.targetCoord}` : 'Обход этажа';
+    const target = getRouteTargetLabel(map);
     const chunks = route.slice(0, 80).map((coord, index) => {
       const cell = map.cells.get(coord);
       const label = cell && cell.names[0] ? ` - ${shortLabel(cell.names[0])}` : '';
@@ -2762,6 +2756,16 @@
     }).join('');
     const tail = route.length > 80 ? `<div class="bkpm-muted">Показано 80 из ${route.length} шагов.</div>` : '';
     return `<div class="bkpm-route-target">${escapeHtml(target)}</div><div class="bkpm-route-list">${chunks}</div>${tail}`;
+  }
+
+  function getRouteTargetLabel(map) {
+    if (!runtime.state.targetCoord) return 'Обход этажа';
+    const selected = runtime.state.selectedCoord;
+    if (selected && selected !== runtime.state.targetCoord && map && map.cells && map.cells.has(selected)) {
+      const keyCoord = findKeyRouteTarget(map, runtime.state.routeStartCoord, selected);
+      if (keyCoord === runtime.state.targetCoord) return `Ключ для ${selected}: ${runtime.state.targetCoord}`;
+    }
+    return `Цель: ${runtime.state.targetCoord}`;
   }
 
   function renderGuideEntryCard(entry) {
@@ -3841,10 +3845,7 @@
           changed = true;
         }
         if (runtime.state.targetCoord) {
-          let route = buildShortestRoute(activeMap, runtime.playerMapCoord, runtime.state.targetCoord);
-          runtime.state.routeBlocked = !route.length || route[route.length - 1] !== runtime.state.targetCoord;
-          if (runtime.state.routeBlocked) route = [runtime.playerMapCoord, runtime.state.targetCoord].filter(Boolean);
-          runtime.state.route = route;
+          updateRouteFromStart(activeMap, runtime.playerMapCoord);
           changed = true;
           fullRenderNeeded = true;
         }
@@ -4230,6 +4231,24 @@
     return runtime.mapByKey.get(mapKey(dungeon.id, floor.id)) || null;
   }
 
+  function getCurrentMapKey() {
+    const dungeon = getCurrentDungeon();
+    const floor = getCurrentFloor();
+    return dungeon && floor ? mapKey(dungeon.id, floor.id) : '';
+  }
+
+  function pruneMapCacheToCurrent() {
+    const currentKey = getCurrentMapKey();
+    if (!currentKey) return;
+    let changed = false;
+    for (const key of Array.from(runtime.mapByKey.keys())) {
+      if (key === currentKey) continue;
+      runtime.mapByKey.delete(key);
+      changed = true;
+    }
+    if (changed) invalidateCellCaches();
+  }
+
   function mapKey(dungeonId, floorId) {
     return `${dungeonId}:${floorId}`;
   }
@@ -4286,19 +4305,159 @@
       const map = getCurrentMap();
       if (!map || !map.cells.has(coord)) return;
       const start = getRouteStartCoord(map);
-      let route = buildShortestRoute(map, start, coord);
-      const blocked = !route.length || route[route.length - 1] !== coord;
-      if (blocked) route = [start, coord].filter(Boolean);
-      runtime.state.selectedCoord = coord;
-      runtime.state.targetCoord = coord;
-      runtime.state.routeStartCoord = start;
-      runtime.state.route = route;
-      runtime.state.routeBlocked = blocked;
+      const info = setRouteToSelection(map, start, coord);
       runtime.state.drawerView = 'cell';
       runtime.state.drawerOpen = true;
       saveStateSoon();
-      queueRender(`Маршрут до ${coord}: ${runtime.state.route.length} шагов`);
+      queueRender(formatRouteStatus(info, coord));
     });
+  }
+
+  function setRouteToSelection(map, startCoord, selectedCoord) {
+    const info = buildRouteInfo(map, startCoord, selectedCoord);
+    runtime.state.selectedCoord = selectedCoord;
+    runtime.state.targetCoord = info.targetCoord;
+    runtime.state.routeStartCoord = startCoord;
+    runtime.state.route = info.route;
+    runtime.state.routeBlocked = info.blocked;
+    return info;
+  }
+
+  function updateRouteFromStart(map, startCoord) {
+    if (!map || !startCoord || !runtime.state.targetCoord) return null;
+    let selected = runtime.state.targetCoord;
+    if (runtime.state.selectedCoord && runtime.state.selectedCoord !== startCoord && map.cells.has(runtime.state.selectedCoord)) {
+      const keyCoord = findKeyRouteTarget(map, startCoord, runtime.state.selectedCoord);
+      selected = keyCoord && keyCoord === runtime.state.targetCoord ? runtime.state.selectedCoord : runtime.state.targetCoord;
+    }
+    const info = buildRouteInfo(map, startCoord, selected);
+    runtime.state.targetCoord = info.targetCoord;
+    runtime.state.routeStartCoord = startCoord;
+    runtime.state.route = info.route;
+    runtime.state.routeBlocked = info.blocked;
+    return info;
+  }
+
+  function buildRouteInfo(map, startCoord, selectedCoord) {
+    const resolved = resolveRouteTarget(map, startCoord, selectedCoord);
+    const targetCoord = resolved.targetCoord || selectedCoord;
+    let route = buildShortestRoute(map, startCoord, targetCoord);
+    const blocked = !route.length || route[route.length - 1] !== targetCoord;
+    if (blocked) route = [startCoord, targetCoord].filter(Boolean);
+    return {
+      selectedCoord,
+      targetCoord,
+      route,
+      blocked,
+      keyForCoord: resolved.keyForCoord || ''
+    };
+  }
+
+  function resolveRouteTarget(map, startCoord, selectedCoord) {
+    if (!map || !selectedCoord || !map.cells.has(selectedCoord)) {
+      return { targetCoord: selectedCoord || '', keyForCoord: '' };
+    }
+    const keyCoord = findKeyRouteTarget(map, startCoord, selectedCoord);
+    return keyCoord ? { targetCoord: keyCoord, keyForCoord: selectedCoord } : { targetCoord: selectedCoord, keyForCoord: '' };
+  }
+
+  function formatRouteStatus(info, selectedCoord) {
+    const data = info || {
+      targetCoord: runtime.state.targetCoord,
+      route: runtime.state.route,
+      keyForCoord: ''
+    };
+    if (data.keyForCoord) {
+      return `Маршрут к ключу ${data.targetCoord} для ${data.keyForCoord}: ${(data.route || []).length} шагов`;
+    }
+    return `Маршрут до ${selectedCoord || data.targetCoord}: ${(data.route || []).length} шагов`;
+  }
+
+  function findKeyRouteTarget(map, startCoord, selectedCoord) {
+    const selected = map.cells.get(selectedCoord);
+    if (!selected || !isLockedRouteTargetCell(selected)) return '';
+    const refs = extractCellCoordRefs(selected).filter(coord => coord !== selectedCoord && map.cells.has(coord));
+    const keyRefs = refs.filter(coord => isKeyProviderCell(map.cells.get(coord)));
+    if (keyRefs.length) return chooseNearestCoord(map, startCoord, keyRefs) || keyRefs[0];
+
+    const keyNames = extractKeyNamesFromCell(selected);
+    if (!keyNames.length) return '';
+    const candidates = [];
+    for (const cell of map.cells.values()) {
+      if (!cell || cell.coord === selectedCoord) continue;
+      if (keyNames.some(name => cellProvidesKeyName(cell, name))) candidates.push(cell.coord);
+    }
+    return chooseNearestCoord(map, startCoord, candidates);
+  }
+
+  function isLockedRouteTargetCell(cell) {
+    if (!cell) return false;
+    const refs = extractCellCoordRefs(cell);
+    const keys = extractKeyNamesFromCell(cell);
+    if (!refs.length && !keys.length) return false;
+    return hasLockedDoorName(cell);
+  }
+
+  function hasLockedDoorName(cell) {
+    const names = Array.isArray(cell && cell.names) ? cell.names : [];
+    for (const name of names) {
+      const text = normalizeName(name);
+      if (!text || isKeyNameText(text) || /^можно\s+получить/.test(text) || /поведение/.test(text)) continue;
+      if (/двер|замок|закрыт|люк|проход|тоннел|тонел|отсек|помещ|администрац|распредел|опасн|хозяйствен/.test(text)) return true;
+    }
+    return false;
+  }
+
+  function isKeyProviderCell(cell) {
+    return extractKeyNamesFromCell(cell).length > 0;
+  }
+
+  function extractKeyNamesFromCell(cell) {
+    if (!cell) return [];
+    const values = []
+      .concat(Array.isArray(cell.dropItems) ? cell.dropItems.map(item => item && item.name) : [])
+      .concat(Array.isArray(cell.names) ? cell.names : []);
+    const seen = new Set();
+    const result = [];
+    for (const value of values) {
+      const text = normalizeName(value);
+      if (!text || !isKeyNameText(text)) continue;
+      const clean = text
+        .replace(/\bможно\s+получить\b/g, ' ')
+        .replace(/\bповедение\b/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (!clean || seen.has(clean)) continue;
+      seen.add(clean);
+      result.push(clean);
+    }
+    return result;
+  }
+
+  function isKeyNameText(text) {
+    return /ключ|отмыч|жвал|пропуск|вентил/.test(text);
+  }
+
+  function cellProvidesKeyName(cell, keyName) {
+    if (!cell || !keyName) return false;
+    return extractKeyNamesFromCell(cell).some(name => name === keyName || name.includes(keyName) || keyName.includes(name));
+  }
+
+  function chooseNearestCoord(map, startCoord, coords) {
+    if (!map || !coords || !coords.length) return '';
+    const start = startCoord && map.cells.get(startCoord);
+    let best = '';
+    let bestScore = Infinity;
+    for (const coord of coords) {
+      const cell = map.cells.get(coord);
+      if (!cell) continue;
+      const score = start ? Math.abs(cell.col - start.col) + Math.abs(cell.row - start.row) : 0;
+      if (score < bestScore) {
+        bestScore = score;
+        best = coord;
+      }
+    }
+    return best;
   }
 
   function buildShortestRoute(map, startCoord, targetCoord) {
@@ -4405,11 +4564,122 @@
     return path.reverse();
   }
 
+  function getRouteSpecialLinks(map) {
+    if (!map || !map.cells) return new Map();
+    if (map.__bkpmRouteSpecialLinks) return map.__bkpmRouteSpecialLinks;
+    const links = new Map();
+    const cells = Array.from(map.cells.values());
+    const portalGroups = new Map();
+    const unnamedPortals = [];
+
+    function addLink(a, b) {
+      if (!a || !b || a === b || !map.cells.has(a) || !map.cells.has(b)) return;
+      if (!links.has(a)) links.set(a, new Set());
+      if (!links.has(b)) links.set(b, new Set());
+      links.get(a).add(b);
+      links.get(b).add(a);
+    }
+
+    for (const cell of cells) {
+      if (!cell) continue;
+      if (isRouteTeleportCell(cell)) {
+        for (const ref of extractCellCoordRefs(cell)) {
+          if (map.cells.has(ref) && !isLockedRouteTargetCell(cell)) addLink(cell.coord, ref);
+        }
+      }
+      if (cell.kind === 'portal' && !isLockedRouteTargetCell(cell)) {
+        const group = getPortalGroupName(cell);
+        if (group) {
+          if (!portalGroups.has(group)) portalGroups.set(group, []);
+          portalGroups.get(group).push(cell);
+        } else {
+          unnamedPortals.push(cell);
+        }
+      }
+    }
+
+    for (const group of portalGroups.values()) {
+      if (group.length < 2 || group.length > 16) continue;
+      for (let i = 0; i < group.length; i++) {
+        for (let j = i + 1; j < group.length; j++) addLink(group[i].coord, group[j].coord);
+      }
+    }
+
+    const namedPortals = Array.from(portalGroups.values()).flat();
+    for (const cell of unnamedPortals) {
+      const nearest = nearestPortalCell(cell, namedPortals.concat(unnamedPortals.filter(item => item.coord !== cell.coord)), 2);
+      if (nearest) addLink(cell.coord, nearest.coord);
+    }
+
+    map.__bkpmRouteSpecialLinks = links;
+    return links;
+  }
+
+  function nearestPortalCell(cell, candidates, maxDistance) {
+    let best = null;
+    let bestDistance = Infinity;
+    for (const candidate of candidates) {
+      if (!candidate || candidate.coord === cell.coord) continue;
+      const distance = Math.abs(candidate.col - cell.col) + Math.abs(candidate.row - cell.row);
+      if (distance <= maxDistance && distance < bestDistance) {
+        bestDistance = distance;
+        best = candidate;
+      }
+    }
+    return best;
+  }
+
+  function isRouteTeleportCell(cell) {
+    if (!cell) return false;
+    if (cell.kind === 'portal') return true;
+    const text = getRouteCellText(cell);
+    return /телеп|утилизатор|слив|светляч|дорога\s+в|таинственный\s+круг|начало\s+пути|невидим[а-я\s]*переход|портал/.test(text);
+  }
+
+  function getPortalGroupName(cell) {
+    if (!cell || cell.kind !== 'portal') return '';
+    const names = Array.isArray(cell.names) ? cell.names : [];
+    for (const name of names) {
+      let value = normalizeName(name).replace(/\b[a-z]+\d+\b/gi, ' ').replace(/\s+/g, ' ').trim();
+      if (!value || /поведение|тип\s+бота|альт\s+обозначения/.test(value)) continue;
+      return value;
+    }
+    return '';
+  }
+
+  function extractCellCoordRefs(cell) {
+    const text = [
+      Array.isArray(cell && cell.names) ? cell.names.join(' ') : '',
+      cell && cell.html ? cell.html : ''
+    ].join(' ');
+    const result = [];
+    const seen = new Set();
+    const pattern = /\b([A-Z]{1,3}\d{1,2})\b/g;
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const coord = String(match[1] || '').toUpperCase();
+      if (seen.has(coord)) continue;
+      seen.add(coord);
+      result.push(coord);
+    }
+    return result;
+  }
+
+  function getRouteCellText(cell) {
+    return normalizeName([
+      cell && cell.kind,
+      cell && cell.className,
+      cell && Array.isArray(cell.names) ? cell.names.join(' ') : '',
+      cell && Array.isArray(cell.dropItems) ? cell.dropItems.map(item => item && item.name).join(' ') : ''
+    ].join(' '));
+  }
+
   function getNeighbors(map, coord) {
     const cell = map.cells.get(coord);
     if (!cell) return [];
+    const special = getRouteSpecialLinks(map).get(coord);
     if (map.source === 'live' || Number.isFinite(cell.gameX)) {
-      return [
+      const result = [
         ['n', cell.gameX, cell.gameY - 1, 's'],
         ['e', cell.gameX + 1, cell.gameY, 'w'],
         ['s', cell.gameX, cell.gameY + 1, 'n'],
@@ -4421,6 +4691,10 @@
         if (!next || (next.walls && next.walls[opposite])) return '';
         return nextCoord;
       }).filter(Boolean);
+      if (special) {
+        for (const next of special) if (!result.includes(next)) result.push(next);
+      }
+      return result;
     }
     const result = [];
     const candidates = [
@@ -4435,6 +4709,9 @@
       const next = map.cells.get(nextCoord);
       if (!next || next.walls[opposite]) continue;
       result.push(nextCoord);
+    }
+    if (special) {
+      for (const next of special) if (!result.includes(next)) result.push(next);
     }
     return result;
   }
