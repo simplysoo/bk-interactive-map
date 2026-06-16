@@ -201,5 +201,77 @@ window.BK_PALADINS_DUNGEONS = [
         url: 'https://lib.paladins.ru/dungeons/ppk/guide/monsters/'
       }
     ]
+  },
+  {
+    id: 'drain',
+    title: 'Канализация',
+    aliases: [
+      'Канализация',
+      'Заброшенная Канализация',
+      'Заброшенная канализация',
+      'Кана',
+      'Канал'
+    ],
+    floors: [
+      {
+        id: 'stage_1',
+        title: '1 этаж',
+        url: 'https://lib.paladins.ru/dungeons/drain/maps/stage_1/'
+      },
+      {
+        id: 'stage_2',
+        title: '2 этаж',
+        url: 'https://lib.paladins.ru/dungeons/drain/maps/stage_2/'
+      },
+      {
+        id: 'stage_3',
+        title: '3 этаж',
+        url: 'https://lib.paladins.ru/dungeons/drain/maps/stage_3/'
+      }
+    ],
+    guides: [
+      {
+        id: 'intro',
+        type: 'intro',
+        title: 'Введение',
+        url: 'https://lib.paladins.ru/dungeons/drain/guide/'
+      },
+      {
+        id: 'floor_1',
+        type: 'floor',
+        title: '1 этаж',
+        url: 'https://lib.paladins.ru/dungeons/drain/guide/1_stage/'
+      },
+      {
+        id: 'floor_2',
+        type: 'floor',
+        title: '2 этаж',
+        url: 'https://lib.paladins.ru/dungeons/drain/guide/2_stage/'
+      },
+      {
+        id: 'floor_3',
+        type: 'floor',
+        title: '3 этаж',
+        url: 'https://lib.paladins.ru/dungeons/drain/guide/3_stage/'
+      },
+      {
+        id: 'chests',
+        type: 'object',
+        title: 'Сундуки и тайники',
+        url: 'https://lib.paladins.ru/dungeons/drain/guide/chests/'
+      },
+      {
+        id: 'monsters',
+        type: 'monster',
+        title: 'Боевые боты',
+        url: 'https://lib.paladins.ru/dungeons/drain/guide/monsters/'
+      },
+      {
+        id: 'npc',
+        type: 'npc',
+        title: 'Диалоговые боты',
+        url: 'https://lib.paladins.ru/dungeons/drain/guide/npc/'
+      }
+    ]
   }
 ];
