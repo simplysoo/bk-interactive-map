@@ -4194,7 +4194,7 @@
     let best = 0;
     for (const alias of aliases) {
       const value = normalizeName(alias);
-      if (!value || isGenericDungeonAlias(value) || !haystack.includes(value)) continue;
+      if (!value || isGenericDungeonAlias(value) || !containsDungeonAlias(haystack, value)) continue;
       const wordCount = value.split(/\s+/).filter(Boolean).length;
       let score = value.length;
       if (value === title) score += 100;
@@ -4203,6 +4203,11 @@
       best = Math.max(best, score);
     }
     return best;
+  }
+
+  function containsDungeonAlias(haystack, alias) {
+    const pattern = escapeRegExp(alias).replace(/\s+/g, '\\s+');
+    return new RegExp(`(?:^|\\s)${pattern}(?:\\s|$)`, 'i').test(haystack);
   }
 
   function isGenericDungeonAlias(value) {
