@@ -78,6 +78,8 @@
     pendingMove: null,
     lastDungeonKey: { token: '', at: 0 },
     mapDrag: null,
+    mapCellTap: null,
+    mapCellClickGuard: null,
     cacheStamp: 0,
     cellMetaScope: '',
     cellMetaCache: new Map(),
@@ -903,11 +905,17 @@
 
     const mapWrap = root.querySelector('[data-role="mapWrap"]');
     if (mapWrap) {
+      mapWrap.addEventListener('pointerdown', handleMapCellPointerDown, true);
+      mapWrap.addEventListener('pointerup', handleMapCellPointerUp, true);
+      mapWrap.addEventListener('pointercancel', clearMapCellTap, true);
       mapWrap.addEventListener('pointerdown', handleMapPointerDown);
       mapWrap.addEventListener('pointermove', handleMapPointerMove);
       mapWrap.addEventListener('pointerup', handleMapPointerEnd);
       mapWrap.addEventListener('pointercancel', handleMapPointerEnd);
-      mapWrap.addEventListener('lostpointercapture', handleMapPointerEnd);
+      mapWrap.addEventListener('lostpointercapture', event => {
+        clearMapCellTap(event);
+        handleMapPointerEnd(event);
+      });
     }
   }
 
@@ -929,7 +937,8 @@
   function handleMapPointerDown(event) {
     if (!event || event.button !== 0) return;
     const target = event.target;
-    if (target && target.closest && target.closest('.bkpm-map-hud,.bkpm-event-rail,.bkpm-drawer,button,select,input,textarea,a')) return;
+    if (target && target.closest && target.closest('.bkpm-map-hud,.bkpm-event-rail,.bkpm-drawer,select,input,textarea,a')) return;
+    if (target && target.closest && target.closest('button:not(.bkpm-cell)')) return;
     const wrap = runtime.root && runtime.root.querySelector('[data-role="mapWrap"]');
     if (!wrap || !wrap.contains(target)) return;
     runtime.mapDrag = {
@@ -959,7 +968,8 @@
     if (!wrap) return;
     const dx = event.clientX - drag.x;
     const dy = event.clientY - drag.y;
-    if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+    if (!drag.moved && Math.abs(dx) + Math.abs(dy) <= 6) return;
+    drag.moved = true;
     wrap.scrollLeft = drag.scrollLeft - dx;
     wrap.scrollTop = drag.scrollTop - dy;
     event.preventDefault();
@@ -982,6 +992,48 @@
     runtime.mapDrag = drag.moved
       ? { suppressClickUntil: Date.now() + 250 }
       : null;
+  }
+
+  function handleMapCellPointerDown(event) {
+    if (!event || event.button !== 0) return;
+    const cellButton = getMapCellButtonFromEvent(event);
+    if (!cellButton) return;
+    runtime.mapCellTap = {
+      pointerId: event.pointerId,
+      coord: cellButton.getAttribute('data-coord') || '',
+      x: event.clientX,
+      y: event.clientY
+    };
+  }
+
+  function handleMapCellPointerUp(event) {
+    const tap = runtime.mapCellTap;
+    runtime.mapCellTap = null;
+    if (!tap || !event || tap.pointerId !== event.pointerId) return;
+    if (!tap.coord) return;
+    const dx = event.clientX - tap.x;
+    const dy = event.clientY - tap.y;
+    if (Math.abs(dx) + Math.abs(dy) > 6) return;
+    if (runtime.mapDrag && runtime.mapDrag.moved) return;
+    const info = selectMapCell(tap.coord, { openDrawer: true });
+    if (!info) return;
+    runtime.mapCellClickGuard = { coord: tap.coord, until: Date.now() + 350 };
+    event.preventDefault();
+  }
+
+  function clearMapCellTap(event) {
+    if (!event || !runtime.mapCellTap || runtime.mapCellTap.pointerId === event.pointerId) {
+      runtime.mapCellTap = null;
+    }
+  }
+
+  function getMapCellButtonFromEvent(event) {
+    const target = event && event.target;
+    if (!target || !target.closest) return null;
+    const cellButton = target.closest('.bkpm-cell[data-coord]');
+    if (!cellButton) return null;
+    const wrap = runtime.root && runtime.root.querySelector('[data-role="mapWrap"]');
+    return wrap && wrap.contains(cellButton) ? cellButton : null;
   }
 
   function handlePanelKeyboardEvent(event) {
@@ -1201,13 +1253,7 @@
     }
     if (action === 'select-coord') {
       const coord = source && source.getAttribute ? source.getAttribute('data-coord') : '';
-      const map = getCurrentMap();
-      if (!coord || !map || !map.cells.has(coord)) return;
-      const start = getRouteStartCoord(map);
-      const info = setRouteToSelection(map, start, coord);
-      saveStateSoon();
-      centerOnCoord((info && info.targetCoord) || coord);
-      queueRender(formatRouteStatus(info, coord));
+      selectMapCell(coord, { center: true });
       return;
     }
   }
@@ -4298,19 +4344,32 @@
       }
       const cellButton = event.target.closest('.bkpm-cell[data-coord]');
       if (!cellButton) return;
+      const coord = cellButton.getAttribute('data-coord');
+      if (runtime.mapCellClickGuard && runtime.mapCellClickGuard.coord === coord && runtime.mapCellClickGuard.until > Date.now()) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       if (document.activeElement && runtime.root.contains(document.activeElement) && typeof document.activeElement.blur === 'function') {
         document.activeElement.blur();
       }
-      const coord = cellButton.getAttribute('data-coord');
-      const map = getCurrentMap();
-      if (!map || !map.cells.has(coord)) return;
-      const start = getRouteStartCoord(map);
-      const info = setRouteToSelection(map, start, coord);
+      selectMapCell(coord, { openDrawer: true });
+    });
+  }
+
+  function selectMapCell(coord, options = {}) {
+    const map = getCurrentMap();
+    if (!coord || !map || !map.cells.has(coord)) return null;
+    const start = getRouteStartCoord(map);
+    const info = setRouteToSelection(map, start, coord);
+    if (options.openDrawer) {
       runtime.state.drawerView = 'cell';
       runtime.state.drawerOpen = true;
-      saveStateSoon();
-      queueRender(formatRouteStatus(info, coord));
-    });
+    }
+    saveStateSoon();
+    if (options.center) centerOnCoord((info && info.targetCoord) || coord);
+    queueRender(formatRouteStatus(info, coord));
+    return info;
   }
 
   function setRouteToSelection(map, startCoord, selectedCoord) {
