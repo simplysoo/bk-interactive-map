@@ -4646,7 +4646,7 @@
           if (map.cells.has(ref) && !isLockedRouteTargetCell(cell)) addLink(cell.coord, ref);
         }
       }
-      if (cell.kind === 'portal' && !isLockedRouteTargetCell(cell)) {
+      if (isRoutePortalCell(cell) && !isLockedRouteTargetCell(cell)) {
         const group = getPortalGroupName(cell);
         if (group) {
           if (!portalGroups.has(group)) portalGroups.set(group, []);
@@ -4690,13 +4690,23 @@
 
   function isRouteTeleportCell(cell) {
     if (!cell) return false;
-    if (cell.kind === 'portal') return true;
+    if (isRoutePortalCell(cell)) return true;
+    if (cell.kind === 'portal') return false;
     const text = getRouteCellText(cell);
     return /телеп|утилизатор|слив|светляч|дорога\s+в|таинственный\s+круг|начало\s+пути|невидим[а-я\s]*переход|портал/.test(text);
   }
 
+  function isRoutePortalCell(cell) {
+    return Boolean(cell && cell.kind === 'portal' && !isRouteBlockedPortalCell(cell));
+  }
+
+  function isRouteBlockedPortalCell(cell) {
+    const text = getRouteCellText(cell);
+    return /баррикад/.test(text);
+  }
+
   function getPortalGroupName(cell) {
-    if (!cell || cell.kind !== 'portal') return '';
+    if (!isRoutePortalCell(cell)) return '';
     const names = Array.isArray(cell.names) ? cell.names : [];
     for (const name of names) {
       let value = normalizeName(name).replace(/\b[a-z]+\d+\b/gi, ' ').replace(/\s+/g, ' ').trim();
