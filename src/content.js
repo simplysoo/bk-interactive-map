@@ -4223,11 +4223,12 @@
   }
 
   function detectDungeonByGame(game) {
-    const haystack = normalizeName(`${game.room || ''} ${game.href || ''}`);
+    const rawHaystack = `${game.room || ''} ${game.href || ''}`;
+    const haystack = normalizeName(rawHaystack);
     if (!haystack) return null;
     let best = null;
     for (const dungeon of DUNGEONS) {
-      const score = scoreDungeonMatch(dungeon, haystack);
+      const score = scoreDungeonMatch(dungeon, haystack, rawHaystack);
       if (score > 0 && (!best || score > best.score)) {
         best = { dungeon, score };
       }
@@ -4235,10 +4236,10 @@
     return best ? best.dungeon : null;
   }
 
-  function scoreDungeonMatch(dungeon, haystack) {
+  function scoreDungeonMatch(dungeon, haystack, rawHaystack) {
     const title = normalizeName(dungeon.title || '');
     const aliases = [dungeon.title, ...(dungeon.aliases || [])];
-    let best = 0;
+    let best = scoreDungeonUrlMatch(dungeon, haystack, rawHaystack);
     for (const alias of aliases) {
       const value = normalizeName(alias);
       if (!value || isGenericDungeonAlias(value) || !containsDungeonAlias(haystack, value)) continue;
@@ -4248,6 +4249,18 @@
       if (wordCount > 1) score += 20;
       if (value.length <= 4) score -= 5;
       best = Math.max(best, score);
+    }
+    return best;
+  }
+
+  function scoreDungeonUrlMatch(dungeon, haystack, rawHaystack) {
+    const raw = String(rawHaystack || '').toLowerCase();
+    let best = 0;
+    for (const alias of dungeon.urlAliases || []) {
+      const direct = String(alias || '').trim().toLowerCase();
+      const normalized = normalizeName(alias);
+      if (direct && raw.includes(direct)) best = Math.max(best, 260 + direct.length);
+      if (normalized && containsDungeonAlias(haystack, normalized)) best = Math.max(best, 220 + normalized.length);
     }
     return best;
   }
