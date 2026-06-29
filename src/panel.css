@@ -2008,21 +2008,45 @@
   font-size: 12px;
 }
 
+#bkpm-root .bkpm-map-list-head.has-search {
+  align-items: stretch;
+}
+
+#bkpm-root .bkpm-map-list-head.has-search > span {
+  flex: 1 1 100%;
+}
+
 #bkpm-root .bkpm-map-search {
   display: flex;
   align-items: center;
-  gap: 7px;
-  min-width: min(260px, 100%);
-  margin-left: auto;
-  color: #d8b36e;
-  font-size: 11px;
+  gap: 9px;
+  flex: 1 1 100%;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid rgba(126, 89, 39, .62);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(92, 140, 123, .16), transparent 34%),
+    linear-gradient(180deg, rgba(14, 20, 18, .94), rgba(7, 10, 9, .96));
+  color: #e5c98d;
+  font: 700 11px/1.2 Georgia, "Times New Roman", serif;
+  box-shadow:
+    inset 0 1px 0 rgba(246, 207, 125, .08),
+    0 0 0 1px rgba(0, 0, 0, .24);
+}
+
+#bkpm-root .bkpm-map-search span {
+  flex: 0 0 auto;
+  color: #d9b46e;
+  white-space: nowrap;
 }
 
 #bkpm-root .bkpm-map-search input {
-  width: 190px;
-  max-width: 100%;
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
   height: 30px;
-  padding: 5px 9px;
+  padding: 5px 10px;
   border: 1px solid rgba(177, 129, 54, .74);
   border-radius: 7px;
   background:
@@ -2422,14 +2446,14 @@
 }
 
 #bkpm-root .bkpm-map-list-card .bkpm-drop-list.compact {
-  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   align-items: start;
   gap: 6px;
   padding: 0 9px 9px 60px;
 }
 
 #bkpm-root .bkpm-map-list-card .bkpm-drop-list.full {
-  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   align-items: start;
   gap: 6px;
   padding: 0 9px 9px 60px;
@@ -2437,7 +2461,11 @@
 
 #bkpm-root .bkpm-map-list-card .bkpm-drop-list.compact .bkpm-drop-item,
 #bkpm-root .bkpm-map-list-card .bkpm-drop-list.full .bkpm-drop-item {
+  align-items: center;
+  min-width: 0;
   min-height: 28px;
+  max-width: 100%;
+  overflow: hidden;
   padding: 3px 6px;
 }
 
@@ -2655,6 +2683,7 @@
 
 #bkpm-root a.bkpm-drop-item::after {
   content: "↗";
+  flex: 0 0 auto;
   margin-left: auto;
   color: rgba(116, 196, 255, .78);
   font: 700 10px/1 Arial, Tahoma, sans-serif;

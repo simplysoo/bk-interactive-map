@@ -2622,7 +2622,8 @@
     const emptyFilter = filterValue && !visiblePool.length
       ? '<div class="bkpm-muted">По этому фильтру монстры не найдены.</div>'
       : '';
-    return `<div class="bkpm-map-list-head">
+    const headClass = category === 'monsters' ? 'bkpm-map-list-head has-search' : 'bkpm-map-list-head';
+    return `<div class="${headClass}">
       <span>${escapeHtml(summary)}</span>
       ${renderCategorySearch(category, filterValue)}
     </div>
@@ -2632,8 +2633,8 @@
   function renderCategorySearch(category, value) {
     if (category !== 'monsters') return '';
     return `<label class="bkpm-map-search">
-      <span>Поиск</span>
-      <input type="search" data-role="category-search" data-category="${escapeAttr(category)}" value="${escapeAttr(value || '')}" placeholder="Название или клетка" autocomplete="off" spellcheck="false">
+      <span>Поиск монстров</span>
+      <input type="search" data-role="category-search" data-category="${escapeAttr(category)}" value="${escapeAttr(value || '')}" placeholder="Имя, дроп или клетка" autocomplete="off" spellcheck="false">
     </label>`;
   }
 
@@ -3012,11 +3013,12 @@
     if (!text) return true;
     if (/^(каталог предметов|предметы из подземья потерянных|экипировка из подземья потерянных)$/i.test(text)) return true;
     if (/^(каталог|раздел|список предметов|все предметы)$/i.test(text)) return true;
-    if (text.length > 80 && /кол-во|поведение|основной урон|тип бота|воскрешение/.test(text)) return true;
+    if (/страница расширенного описания бота|расширенное описание бота|описание бота/.test(text)) return true;
+    if (text.length > 45 && /(кол\s*во|кол-во|поведение|сила|ловкость|интуиция|выносливость|интеллект|мудрость|духовность|основной урон|удары и блоки|тип бота|воскрешение)/.test(text)) return true;
     const url = String(href || '').toLowerCase();
     if (/\/items\/?(?:[#?].*)?$/.test(url)) return true;
     if (/\/items\/(?:catalog|category|section|sets?)\b/.test(url)) return true;
-    if (/\/dungeons\/[^/]+\/guide\/monsters#bot_/.test(url)) return true;
+    if (/\/dungeons\/[^/]+\/guide\/monsters\/?#/.test(url)) return true;
     return false;
   }
 
