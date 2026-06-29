@@ -446,5 +446,100 @@ window.BK_PALADINS_DUNGEONS = [
         url: 'https://lib.paladins.ru/dungeons/katakomby/guide/monsters/'
       }
     ]
+  },
+  {
+    id: 'ptp',
+    title: 'ПТП',
+    aliases: [
+      'Пещера Тысячи Проклятий',
+      'Пещеры Тысячи Проклятий',
+      'Пещере Тысячи Проклятий',
+      'Тысячи Проклятий',
+      'ПТП',
+      'ptp'
+    ],
+    floors: [
+      {
+        id: 'stage_1',
+        title: '1 этаж',
+        url: 'https://lib.paladins.ru/dungeons/ptp/maps/stage_1/'
+      },
+      {
+        id: 'stage_2',
+        title: '2 этаж',
+        url: 'https://lib.paladins.ru/dungeons/ptp/maps/stage_2/'
+      },
+      {
+        id: 'stage_3',
+        title: '3 этаж',
+        url: 'https://lib.paladins.ru/dungeons/ptp/maps/stage_3/'
+      },
+      {
+        id: 'stage_4',
+        title: '4 этаж',
+        url: 'https://lib.paladins.ru/dungeons/ptp/maps/stage_4/'
+      },
+      {
+        id: 'stage_5',
+        title: '5 этаж',
+        url: 'https://lib.paladins.ru/dungeons/ptp/maps/stage_5/'
+      }
+    ],
+    guides: [
+      {
+        id: 'intro',
+        type: 'intro',
+        title: 'Общая информация',
+        url: 'https://lib.paladins.ru/dungeons/ptp/guide/'
+      },
+      {
+        id: 'floor_1',
+        type: 'floor',
+        title: '1 этаж',
+        url: 'https://lib.paladins.ru/dungeons/ptp/guide/1_stage/'
+      },
+      {
+        id: 'floor_2',
+        type: 'floor',
+        title: '2 этаж',
+        url: 'https://lib.paladins.ru/dungeons/ptp/guide/2_stage/'
+      },
+      {
+        id: 'floor_3',
+        type: 'floor',
+        title: '3 этаж',
+        url: 'https://lib.paladins.ru/dungeons/ptp/guide/3_stage/'
+      },
+      {
+        id: 'floor_4',
+        type: 'floor',
+        title: '4 этаж',
+        url: 'https://lib.paladins.ru/dungeons/ptp/guide/4_stage/'
+      },
+      {
+        id: 'floor_5',
+        type: 'floor',
+        title: '5 этаж',
+        url: 'https://lib.paladins.ru/dungeons/ptp/guide/5_stage/'
+      },
+      {
+        id: 'npc',
+        type: 'npc',
+        title: 'Диалоговые боты',
+        url: 'https://lib.paladins.ru/dungeons/ptp/guide/npc/'
+      },
+      {
+        id: 'chests',
+        type: 'object',
+        title: 'Сундуки и тайники',
+        url: 'https://lib.paladins.ru/dungeons/ptp/guide/chests/'
+      },
+      {
+        id: 'monsters',
+        type: 'monster',
+        title: 'Боевые боты',
+        url: 'https://lib.paladins.ru/dungeons/ptp/guide/monsters/'
+      }
+    ]
   }
 ];

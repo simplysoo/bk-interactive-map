@@ -16,6 +16,7 @@ const dungeonsFile = path.join(root, 'src', 'dungeons.js');
 const sandbox = { window: {} };
 vm.runInNewContext(fs.readFileSync(dungeonsFile, 'utf8'), sandbox, { filename: dungeonsFile });
 const dungeons = sandbox.window.BK_PALADINS_DUNGEONS || [];
+const requestedTargets = new Set(process.argv.slice(2).map(value => String(value || '').toLowerCase()).filter(Boolean));
 
 function cleanText(value) {
   return decodeHtml(String(value || '')
@@ -241,6 +242,32 @@ function mapFileName(dungeon, floor) {
   return `${dungeon.id}_${floor.id}.json`.replace(/[^a-z0-9_.-]/gi, '_');
 }
 
+function shouldBuildFloor(dungeon, floor) {
+  if (!requestedTargets.size) return true;
+  const dungeonId = String(dungeon && dungeon.id || '').toLowerCase();
+  const floorId = String(floor && floor.id || '').toLowerCase();
+  return requestedTargets.has(dungeonId) || requestedTargets.has(`${dungeonId}:${floorId}`);
+}
+
+function readPreloadPayload() {
+  const freshPayload = {
+    generatedAt: new Date().toISOString(),
+    version: 1,
+    maps: {}
+  };
+  if (!requestedTargets.size || !fs.existsSync(outFile)) return freshPayload;
+  try {
+    const payload = JSON.parse(fs.readFileSync(outFile, 'utf8'));
+    if (!payload || typeof payload !== 'object') return freshPayload;
+    if (!payload.maps || typeof payload.maps !== 'object') payload.maps = {};
+    payload.generatedAt = new Date().toISOString();
+    payload.version = payload.version || 1;
+    return payload;
+  } catch {
+    return freshPayload;
+  }
+}
+
 async function fetchText(url) {
   const response = await fetch(url, { cache: 'no-store' });
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
@@ -250,13 +277,11 @@ async function fetchText(url) {
 async function main() {
   fs.mkdirSync(outDir, { recursive: true });
   fs.mkdirSync(mapsDir, { recursive: true });
-  const payload = {
-    generatedAt: new Date().toISOString(),
-    version: 1,
-    maps: {}
-  };
+  const payload = readPreloadPayload();
+  let built = 0;
   for (const dungeon of dungeons) {
     for (const floor of dungeon.floors || []) {
+      if (!shouldBuildFloor(dungeon, floor)) continue;
       const key = `${dungeon.id}:${floor.id}`;
       process.stdout.write(`fetch ${key} ... `);
       const html = await fetchText(floor.url);
@@ -269,11 +294,12 @@ async function main() {
         maxCol: map.maxCol,
         maxRow: map.maxRow
       };
+      built += 1;
       console.log(`${map.cells.length} cells`);
     }
   }
   fs.writeFileSync(outFile, JSON.stringify(payload), 'utf8');
-  console.log(`saved ${outFile} (${fs.statSync(outFile).size} bytes)`);
+  console.log(`saved ${outFile} (${fs.statSync(outFile).size} bytes, ${built} maps built)`);
 }
 
 main().catch(error => {
