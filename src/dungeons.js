@@ -374,6 +374,26 @@ window.BK_PALADINS_DUNGEONS = [
         id: 'stage_1',
         title: '1 этаж',
         url: 'https://lib.paladins.ru/dungeons/katakomby/maps/stage_1/'
+      },
+      {
+        id: 'stage_1_2',
+        title: '1 этаж (Провал)',
+        url: 'https://lib.paladins.ru/dungeons/katakomby/maps/stage_1-2/'
+      },
+      {
+        id: 'stage_2',
+        title: '2 этаж',
+        url: 'https://lib.paladins.ru/dungeons/katakomby/maps/stage_2/'
+      },
+      {
+        id: 'stage_3',
+        title: '3 этаж',
+        url: 'https://lib.paladins.ru/dungeons/katakomby/maps/stage_3/'
+      },
+      {
+        id: 'stage_4',
+        title: '4 этаж',
+        url: 'https://lib.paladins.ru/dungeons/katakomby/maps/stage_4/'
       }
     ],
     guides: [
@@ -388,6 +408,24 @@ window.BK_PALADINS_DUNGEONS = [
         type: 'floor',
         title: '1 этаж',
         url: 'https://lib.paladins.ru/dungeons/katakomby/guide/1_stage/'
+      },
+      {
+        id: 'floor_2',
+        type: 'floor',
+        title: '2 этаж',
+        url: 'https://lib.paladins.ru/dungeons/katakomby/guide/2_stage/'
+      },
+      {
+        id: 'floor_3',
+        type: 'floor',
+        title: '3 этаж',
+        url: 'https://lib.paladins.ru/dungeons/katakomby/guide/3_stage/'
+      },
+      {
+        id: 'floor_4',
+        type: 'floor',
+        title: '4 этаж',
+        url: 'https://lib.paladins.ru/dungeons/katakomby/guide/4_stage/'
       },
       {
         id: 'npc',
