@@ -358,5 +358,55 @@ window.BK_PALADINS_DUNGEONS = [
         url: 'https://lib.paladins.ru/dungeons/bezdna/guide/monsters/'
       }
     ]
+  },
+  {
+    id: 'katakomby',
+    title: 'Катакомбы',
+    aliases: [
+      'Катакомбы',
+      'Катакомб',
+      'Катакомбах',
+      'Катакомбами',
+      'katakomby'
+    ],
+    floors: [
+      {
+        id: 'stage_1',
+        title: '1 этаж',
+        url: 'https://lib.paladins.ru/dungeons/katakomby/maps/stage_1/'
+      }
+    ],
+    guides: [
+      {
+        id: 'intro',
+        type: 'intro',
+        title: 'Общая информация',
+        url: 'https://lib.paladins.ru/dungeons/katakomby/guide/'
+      },
+      {
+        id: 'floor_1',
+        type: 'floor',
+        title: '1 этаж',
+        url: 'https://lib.paladins.ru/dungeons/katakomby/guide/1_stage/'
+      },
+      {
+        id: 'npc',
+        type: 'npc',
+        title: 'Диалоговые боты',
+        url: 'https://lib.paladins.ru/dungeons/katakomby/guide/npc/'
+      },
+      {
+        id: 'chests',
+        type: 'object',
+        title: 'Сундуки и тайники',
+        url: 'https://lib.paladins.ru/dungeons/katakomby/guide/chests/'
+      },
+      {
+        id: 'monsters',
+        type: 'monster',
+        title: 'Боевые боты',
+        url: 'https://lib.paladins.ru/dungeons/katakomby/guide/monsters/'
+      }
+    ]
   }
 ];
