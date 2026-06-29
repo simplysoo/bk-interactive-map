@@ -116,6 +116,7 @@
       lootStats: {},
       lootEvents: [],
       seenLootMessages: {},
+      categoryFilters: {},
       visited: {},
       clearedMonsters: {}
     }
@@ -700,6 +701,7 @@
         runtime.state.lootStats = value.lootStats && typeof value.lootStats === 'object' ? value.lootStats : {};
         runtime.state.lootEvents = Array.isArray(value.lootEvents) ? value.lootEvents.slice(-300) : [];
         runtime.state.seenLootMessages = trimObjectByKeys(value.seenLootMessages, 700);
+        runtime.state.categoryFilters = value.categoryFilters && typeof value.categoryFilters === 'object' ? value.categoryFilters : {};
         runtime.state.routeStartCoord = typeof value.routeStartCoord === 'string' ? value.routeStartCoord : '';
         runtime.state.route = Array.isArray(value.route) ? value.route : [];
         runtime.state.routeBlocked = Boolean(value.routeBlocked);
@@ -901,6 +903,19 @@
         queueRender('Этаж выбран');
         scheduleMapLoad(false);
       }
+    });
+
+    root.addEventListener('input', event => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement)) return;
+      if (!target.matches('[data-role="category-search"]')) return;
+      const category = target.getAttribute('data-category') || runtime.state.drawerView || '';
+      if (!category) return;
+      if (!runtime.state.categoryFilters || typeof runtime.state.categoryFilters !== 'object') runtime.state.categoryFilters = {};
+      runtime.state.categoryFilters[category] = String(target.value || '').slice(0, 80);
+      runtime.categoryListLimits[getCategoryListLimitKey(category)] = CATEGORY_LIST_INITIAL;
+      saveStateSoon();
+      queueRender();
     });
 
     const mapWrap = root.querySelector('[data-role="mapWrap"]');
@@ -1962,10 +1977,12 @@
     const renderKey = String(key || '');
     if (drawerEl.__bkpmDrawerHtml === next && drawerEl.dataset.bkpmDrawerKey === renderKey) return;
     const scroll = captureDrawerScroll(drawerEl);
+    const focus = captureDrawerFocus(drawerEl);
     drawerEl.innerHTML = next;
     drawerEl.__bkpmDrawerHtml = next;
     drawerEl.dataset.bkpmDrawerKey = renderKey;
     restoreDrawerScroll(drawerEl, scroll, renderKey);
+    restoreDrawerFocus(drawerEl, focus);
   }
 
   function captureDrawerScroll(drawerEl) {
@@ -1987,6 +2004,33 @@
       if (!drawerEl.isConnected) return;
       body.scrollTop = snapshot.top || 0;
       body.scrollLeft = snapshot.left || 0;
+    });
+  }
+
+  function captureDrawerFocus(drawerEl) {
+    const active = document.activeElement;
+    if (!active || !drawerEl || !drawerEl.contains(active)) return null;
+    if (!active.matches || !active.matches('[data-role="category-search"]')) return null;
+    return {
+      role: active.getAttribute('data-role') || '',
+      category: active.getAttribute('data-category') || '',
+      start: typeof active.selectionStart === 'number' ? active.selectionStart : null,
+      end: typeof active.selectionEnd === 'number' ? active.selectionEnd : null
+    };
+  }
+
+  function restoreDrawerFocus(drawerEl, snapshot) {
+    if (!snapshot || snapshot.role !== 'category-search') return;
+    const selector = `[data-role="category-search"][data-category="${cssEscape(snapshot.category)}"]`;
+    const input = drawerEl && drawerEl.querySelector ? drawerEl.querySelector(selector) : null;
+    if (!input || typeof input.focus !== 'function') return;
+    requestAnimationFrame(() => {
+      if (!input.isConnected) return;
+      input.focus({ preventScroll: true });
+      if (typeof input.setSelectionRange === 'function' && snapshot.start !== null) {
+        const length = String(input.value || '').length;
+        input.setSelectionRange(Math.min(snapshot.start, length), Math.min(snapshot.end === null ? snapshot.start : snapshot.end, length));
+      }
     });
   }
 
@@ -2546,6 +2590,10 @@
     if (!map) return '<div class="bkpm-muted">Карта еще не загружена.</div>';
     const rows = getMapCategoryRows(map, guide, category);
     const groupedRows = category === 'caches' ? rows : groupMapCategoryRows(rows, category);
+    const filterValue = getCategoryFilter(category);
+    const visiblePool = category === 'monsters' && filterValue
+      ? groupedRows.filter(row => rowMatchesCategoryFilter(row, filterValue))
+      : groupedRows;
     if (!rows.length) {
       const empty = category === 'monsters'
         ? 'Монстров на текущем этаже не найдено.'
@@ -2557,24 +2605,60 @@
 
     const clearedCount = rows.filter(row => row.cleared).length;
     const summary = category === 'monsters'
-      ? `${groupedRows.length} видов · ${rows.length} на этаже · убито ${clearedCount}`
+      ? `${visiblePool.length}${filterValue ? ` из ${groupedRows.length}` : ''} видов · ${rows.length} на этаже · убито ${clearedCount}`
       : category === 'caches'
         ? `${rows.length} на этаже · весь возможный дроп`
         : `${groupedRows.length} групп · ${rows.length} на этаже`;
-    const limit = getCategoryListLimit(category, groupedRows.length);
-    const visibleRows = groupedRows.slice(0, limit);
+    const limit = getCategoryListLimit(category, visiblePool.length);
+    const visibleRows = visiblePool.slice(0, limit);
     const cards = visibleRows.map(row => renderMapCategoryCard(row, category)).join('');
-    const moreCount = groupedRows.length - visibleRows.length;
+    const moreCount = visiblePool.length - visibleRows.length;
     const more = moreCount > 0
       ? `<div class="bkpm-map-list-more">
-          <span>Показано ${visibleRows.length} из ${groupedRows.length}</span>
+          <span>Показано ${visibleRows.length} из ${visiblePool.length}</span>
           <button type="button" data-action="category-more" data-category="${escapeAttr(category)}">Показать еще ${Math.min(CATEGORY_LIST_STEP, moreCount)}</button>
         </div>`
       : '';
+    const emptyFilter = filterValue && !visiblePool.length
+      ? '<div class="bkpm-muted">По этому фильтру монстры не найдены.</div>'
+      : '';
     return `<div class="bkpm-map-list-head">
       <span>${escapeHtml(summary)}</span>
+      ${renderCategorySearch(category, filterValue)}
     </div>
-    <div class="bkpm-map-list">${cards}</div>${more}`;
+    ${emptyFilter || `<div class="bkpm-map-list">${cards}</div>${more}`}`;
+  }
+
+  function renderCategorySearch(category, value) {
+    if (category !== 'monsters') return '';
+    return `<label class="bkpm-map-search">
+      <span>Поиск</span>
+      <input type="search" data-role="category-search" data-category="${escapeAttr(category)}" value="${escapeAttr(value || '')}" placeholder="Название или клетка" autocomplete="off" spellcheck="false">
+    </label>`;
+  }
+
+  function getCategoryFilter(category) {
+    const filters = runtime.state.categoryFilters && typeof runtime.state.categoryFilters === 'object'
+      ? runtime.state.categoryFilters
+      : {};
+    return String(filters[category] || '').trim();
+  }
+
+  function rowMatchesCategoryFilter(row, filter) {
+    const terms = normalizeName(filter).split(/\s+/).filter(Boolean);
+    if (!terms.length) return true;
+    const cell = row && row.cell ? row.cell : null;
+    const dropNames = (row.dropItems || []).map(item => item && item.name).filter(Boolean);
+    const haystack = normalizeName([
+      row && row.title,
+      cell && cell.coord,
+      cell && cell.label,
+      ...(row && row.coords ? row.coords : []),
+      ...(row && row.labels ? row.labels : []),
+      ...(cell && Array.isArray(cell.names) ? cell.names : []),
+      ...dropNames
+    ].join(' '));
+    return terms.every(term => haystack.includes(term));
   }
 
   function getCategoryListLimitKey(category) {
@@ -2599,7 +2683,7 @@
         cell,
         meta,
         cleared,
-        title: getCategoryCellTitle(cell),
+        title: getCategoryCellTitle(cell, meta, category),
         image: cell.image || ((meta.dropItems || []).find(item => item && item.image) || {}).image || '',
         dropItems: meta.dropItems || []
       });
@@ -2676,9 +2760,43 @@
     return Boolean(map && coord && runtime.state.clearedMonsters && runtime.state.clearedMonsters[`${map.dungeonId}:${map.floorId}:${coord}`]);
   }
 
-  function getCategoryCellTitle(cell) {
+  function getCategoryCellTitle(cell, meta, category) {
     const names = Array.isArray(cell && cell.names) ? cell.names.filter(Boolean) : [];
-    return names.length ? names.slice(0, 3).join(', ') : cell ? cell.label || cell.coord : '';
+    const candidates = [];
+    if (category === 'monsters' && meta && Array.isArray(meta.matches)) {
+      for (const entry of meta.matches) {
+        if (entry && entry.type === 'monster') candidates.push(entry.name || entry.normalized || '');
+      }
+    }
+    candidates.push(...names);
+    const cleaned = uniqueStrings(candidates.map(cleanCategoryTitlePart).filter(Boolean));
+    return cleaned.length ? cleaned.slice(0, 3).join(', ') : cell ? cell.label || cell.coord : '';
+  }
+
+  function cleanCategoryTitlePart(value) {
+    const text = cleanText(value)
+      .replace(/\s+Кол-во:.*$/i, '')
+      .replace(/\s+Поведение:.*$/i, '')
+      .replace(/\s+Можно получить:.*$/i, '')
+      .replace(/\s+Тип бота:.*$/i, '')
+      .trim();
+    if (!text) return '';
+    const normalized = normalizeName(text);
+    if (/^(поведение|можно получить|тип бота|альт обозначения|дроп не указан)$/.test(normalized)) return '';
+    if (/^(сила|ловкость|интуиция|выносливость|интеллект|мудрость|духовность)$/.test(normalized)) return '';
+    return text.length > 70 ? `${text.slice(0, 67).trim()}...` : text;
+  }
+
+  function uniqueStrings(values) {
+    const result = [];
+    const seen = new Set();
+    for (const value of values || []) {
+      const key = canonicalName(value);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      result.push(value);
+    }
+    return result;
   }
 
   function renderMapCategoryCard(row, category) {
@@ -2894,9 +3012,11 @@
     if (!text) return true;
     if (/^(каталог предметов|предметы из подземья потерянных|экипировка из подземья потерянных)$/i.test(text)) return true;
     if (/^(каталог|раздел|список предметов|все предметы)$/i.test(text)) return true;
+    if (text.length > 80 && /кол-во|поведение|основной урон|тип бота|воскрешение/.test(text)) return true;
     const url = String(href || '').toLowerCase();
     if (/\/items\/?(?:[#?].*)?$/.test(url)) return true;
     if (/\/items\/(?:catalog|category|section|sets?)\b/.test(url)) return true;
+    if (/\/dungeons\/[^/]+\/guide\/monsters#bot_/.test(url)) return true;
     return false;
   }
 

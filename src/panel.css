@@ -760,6 +760,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
   min-height: 30px;
   padding: 4px 6px;
   border: 1px solid rgba(89, 72, 43, .2);
@@ -770,6 +772,16 @@
   text-decoration: none;
   font-weight: 700;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .62);
+}
+
+#bkpm-root .bkpm-drop-item span {
+  min-width: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+  line-height: 1.15;
 }
 
 #bkpm-root .bkpm-drop-item:hover {
@@ -1989,9 +2001,46 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-bottom: 8px;
   color: #e5c98d;
   font-size: 12px;
+}
+
+#bkpm-root .bkpm-map-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: min(260px, 100%);
+  margin-left: auto;
+  color: #d8b36e;
+  font-size: 11px;
+}
+
+#bkpm-root .bkpm-map-search input {
+  width: 190px;
+  max-width: 100%;
+  height: 30px;
+  padding: 5px 9px;
+  border: 1px solid rgba(177, 129, 54, .74);
+  border-radius: 7px;
+  background:
+    linear-gradient(180deg, rgba(11, 15, 14, .98), rgba(7, 10, 9, .98));
+  color: #f2dfb4;
+  outline: none;
+  font: 700 12px/1.2 Georgia, "Times New Roman", serif;
+  box-shadow:
+    inset 0 1px 0 rgba(246, 207, 125, .1),
+    0 0 0 1px rgba(0, 0, 0, .28);
+}
+
+#bkpm-root .bkpm-map-search input:focus {
+  border-color: #62d8ff;
+  box-shadow:
+    inset 0 1px 0 rgba(246, 207, 125, .12),
+    0 0 0 1px rgba(98, 216, 255, .32),
+    0 0 12px rgba(98, 216, 255, .16);
 }
 
 #bkpm-root .bkpm-map-list {
@@ -2374,12 +2423,14 @@
 
 #bkpm-root .bkpm-map-list-card .bkpm-drop-list.compact {
   grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  align-items: start;
   gap: 6px;
   padding: 0 9px 9px 60px;
 }
 
 #bkpm-root .bkpm-map-list-card .bkpm-drop-list.full {
   grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  align-items: start;
   gap: 6px;
   padding: 0 9px 9px 60px;
 }
@@ -2388,6 +2439,11 @@
 #bkpm-root .bkpm-map-list-card .bkpm-drop-list.full .bkpm-drop-item {
   min-height: 28px;
   padding: 3px 6px;
+}
+
+#bkpm-root .bkpm-map-list-card .bkpm-drop-list.compact .bkpm-drop-item span,
+#bkpm-root .bkpm-map-list-card .bkpm-drop-list.full .bkpm-drop-item span {
+  max-height: 32px;
 }
 
 #bkpm-root .bkpm-map-list-card .bkpm-drop-list.compact .bkpm-drop-item img,
