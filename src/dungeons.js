@@ -541,5 +541,107 @@ window.BK_PALADINS_DUNGEONS = [
         url: 'https://lib.paladins.ru/dungeons/ptp/guide/monsters/'
       }
     ]
+  },
+  {
+    id: 'pm',
+    title: 'Пещеры Мглы',
+    aliases: [
+      'Пещеры Мглы',
+      'Пещера Мглы',
+      'Пещере Мглы',
+      'Пещерах Мглы',
+      'ПМ',
+      'pm'
+    ],
+    floors: [
+      {
+        id: 'stage_1',
+        title: '1 этаж',
+        url: 'https://lib.paladins.ru/dungeons/pm/maps/stage_1/'
+      },
+      {
+        id: 'stage_2',
+        title: '2 этаж',
+        url: 'https://lib.paladins.ru/dungeons/pm/maps/stage_2/'
+      },
+      {
+        id: 'stage_3',
+        title: '3 этаж',
+        url: 'https://lib.paladins.ru/dungeons/pm/maps/stage_3/'
+      },
+      {
+        id: 'stage_4',
+        title: '4 этаж',
+        url: 'https://lib.paladins.ru/dungeons/pm/maps/stage_4/'
+      }
+    ],
+    guides: [
+      {
+        id: 'intro',
+        type: 'intro',
+        title: 'Общая информация',
+        url: 'https://lib.paladins.ru/dungeons/pm/guide/'
+      },
+      {
+        id: 'floor_1',
+        type: 'floor',
+        title: '1 этаж',
+        url: 'https://lib.paladins.ru/dungeons/pm/guide/1_stage/'
+      },
+      {
+        id: 'floor_2',
+        type: 'floor',
+        title: '2 этаж',
+        url: 'https://lib.paladins.ru/dungeons/pm/guide/2_stage/'
+      },
+      {
+        id: 'floor_3',
+        type: 'floor',
+        title: '3 этаж',
+        url: 'https://lib.paladins.ru/dungeons/pm/guide/3_stage/'
+      },
+      {
+        id: 'floor_4',
+        type: 'floor',
+        title: '4 этаж',
+        url: 'https://lib.paladins.ru/dungeons/pm/guide/4_stage/'
+      },
+      {
+        id: 'npc',
+        type: 'npc',
+        title: 'Диалоговые боты',
+        url: 'https://lib.paladins.ru/dungeons/pm/guide/npc/'
+      },
+      {
+        id: 'npc_380',
+        type: 'npc',
+        title: 'NPC Пещер Мглы',
+        url: 'https://lib.paladins.ru/dungeons/pm/guide/npc/bot_id380/'
+      },
+      {
+        id: 'npc_647',
+        type: 'npc',
+        title: 'NPC Пещер Мглы',
+        url: 'https://lib.paladins.ru/dungeons/pm/guide/npc/bot_id647/'
+      },
+      {
+        id: 'npc_648',
+        type: 'npc',
+        title: 'NPC Пещер Мглы',
+        url: 'https://lib.paladins.ru/dungeons/pm/guide/npc/bot_id648/'
+      },
+      {
+        id: 'chests',
+        type: 'object',
+        title: 'Сундуки и тайники',
+        url: 'https://lib.paladins.ru/dungeons/pm/guide/chests/'
+      },
+      {
+        id: 'monsters',
+        type: 'monster',
+        title: 'Боевые боты',
+        url: 'https://lib.paladins.ru/dungeons/pm/guide/monsters/'
+      }
+    ]
   }
 ];
