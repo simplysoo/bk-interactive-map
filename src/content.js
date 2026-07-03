@@ -548,7 +548,7 @@
     runtime.game.coord = coord;
     runtime.game.direction = runtime.optimisticMove.direction;
     runtime.game.syncMode = token && /^m/.test(token) ? 'move' : 'turn';
-    runtime.gameSignature = [runtime.game.room || '', runtime.game.floorNumber || '', coord, runtime.game.rawCoord || '', runtime.game.direction, runtime.game.syncMode].join('|');
+    runtime.gameSignature = [runtime.game.room || '', runtime.game.floorNumber || '', runtime.game.environment || '', coord, runtime.game.rawCoord || '', runtime.game.direction, runtime.game.syncMode].join('|');
     if (token !== 'rr' && token !== 'rl') {
       persistLastPlayer(getCurrentMap(), coord, runtime.game.direction, token && /^m/.test(token) ? 'move' : 'turn');
     }
@@ -3326,6 +3326,56 @@
     return null;
   }
 
+  function readVisibleDungeonEnvironment() {
+    for (const context of getAccessibleContexts()) {
+      const environment = extractDungeonEnvironment(context.doc, context.href);
+      if (environment) return environment;
+    }
+    return '';
+  }
+
+  function extractDungeonEnvironment(doc, href) {
+    const fromUrl = dungeonEnvironmentFromUrl(href || (doc && doc.location && doc.location.href));
+    const root = doc && doc.querySelector ? doc.querySelector('#brodilka, .maze_layer, .Dungeon') : null;
+    if (!root) return fromUrl;
+    const samples = [];
+    const rootStyle = root.getAttribute ? root.getAttribute('style') : '';
+    if (rootStyle) samples.push(rootStyle);
+    const nodes = Array.from(root.querySelectorAll('[style], img[src]')).slice(0, 140);
+    for (const node of nodes) {
+      if (node.getAttribute) {
+        const style = node.getAttribute('style') || '';
+        const src = node.getAttribute('src') || '';
+        if (style) samples.push(style);
+        if (src) samples.push(src);
+      }
+      if (node.style && node.style.backgroundImage) samples.push(node.style.backgroundImage);
+    }
+    for (const sample of samples) {
+      const environment = dungeonEnvironmentFromText(sample);
+      if (environment && environment !== 'emeraldscity') return environment;
+    }
+    return fromUrl || samples.map(dungeonEnvironmentFromText).find(Boolean) || '';
+  }
+
+  function dungeonEnvironmentFromUrl(value) {
+    const raw = String(value || '').toLowerCase();
+    if (/\/\/(?:[^/]*\.)?suncity\.combats\.com\b/.test(raw)) return 'sun';
+    if (/\/\/(?:[^/]*\.)?angelscity\.combats\.com\b/.test(raw)) return 'angels';
+    if (/\/\/(?:[^/]*\.)?emeralds?city\.combats\.com\b/.test(raw)) return 'emeraldscity';
+    return dungeonEnvironmentFromText(raw);
+  }
+
+  function dungeonEnvironmentFromText(value) {
+    const raw = String(value || '').toLowerCase().replace(/\\/g, '/');
+    const spriteMatch = raw.match(/\/i\/sprites\/([^\/"')\s?#]+)/i);
+    const token = spriteMatch ? spriteMatch[1] : raw;
+    if (/(^|[^a-z])sun(?:city)?([^a-z]|$)/i.test(token)) return 'sun';
+    if (/(^|[^a-z])angels(?:city)?([^a-z]|$)/i.test(token)) return 'angels';
+    if (/(^|[^a-z])emeralds?city([^a-z]|$)/i.test(token)) return 'emeraldscity';
+    return '';
+  }
+
   function isDungeonSceneImage(src) {
     const value = String(src || '').toLowerCase().replace(/\\/g, '/');
     if (!value || /\/i\/1x1\.gif/i.test(value)) return false;
@@ -3870,6 +3920,7 @@
         const battleSignature = [
           runtime.game.room || '',
           runtime.game.floorNumber || '',
+          runtime.game.environment || '',
           runtime.playerMapCoord,
           runtime.game.rawCoord || '',
           runtime.game.direction || '',
@@ -4002,7 +4053,7 @@
       runtime.liveMap = buildLiveMap(game);
     }
 
-    const signature = [game.room, game.floorNumber, runtime.playerMapCoord, game.rawCoord, game.direction, game.syncMode].join('|');
+    const signature = [game.room, game.floorNumber, game.environment || '', runtime.playerMapCoord, game.rawCoord, game.direction, game.syncMode].join('|');
     if (signature !== previousSignature) {
       runtime.gameSignature = signature;
       changed = true;
@@ -4164,6 +4215,9 @@
     const scene = shouldReadSceneForGameState()
       ? (extractDungeonScene(context.doc) || (context.depth === 0 ? readVisibleScene() : null))
       : null;
+    const environment = extractDungeonEnvironment(context.doc, context.href) ||
+      (context.depth === 0 ? readVisibleDungeonEnvironment() : '') ||
+      dungeonEnvironmentFromUrl(context.href);
     const hasUserCoord = user && Number.isFinite(Number(user.x)) && Number.isFinite(Number(user.y));
     const x = hasUserCoord ? Number(user.x) : (minimap && Number.isFinite(minimap.x) ? minimap.x : null);
     const y = hasUserCoord ? Number(user.y) : (minimap && Number.isFinite(minimap.y) ? minimap.y : null);
@@ -4187,6 +4241,7 @@
       matrix,
       minimap,
       scene,
+      environment,
       floorNumber: floorMatch ? Number(floorMatch[1]) : null
     };
   }
@@ -4354,7 +4409,9 @@
   }
 
   function detectDungeonByGame(game) {
-    const rawHaystack = `${game.room || ''} ${game.href || ''}`;
+    const environmentDungeon = detectDungeonByEnvironment(game && game.environment);
+    if (environmentDungeon) return environmentDungeon;
+    const rawHaystack = `${game.room || ''} ${game.environment || ''} ${game.href || ''}`;
     const haystack = normalizeName(rawHaystack);
     if (!haystack) return null;
     let best = null;
@@ -4365,6 +4422,13 @@
       }
     }
     return best ? best.dungeon : null;
+  }
+
+  function detectDungeonByEnvironment(environment) {
+    const value = String(environment || '').toLowerCase();
+    if (value === 'sun') return DUNGEONS.find(dungeon => dungeon.id === 'gribnica') || null;
+    if (value === 'angels') return DUNGEONS.find(dungeon => dungeon.id === 'bezdna') || null;
+    return null;
   }
 
   function scoreDungeonMatch(dungeon, haystack, rawHaystack) {
