@@ -3133,3 +3133,154 @@
     display: none;
   }
 }
+
+/* Readability and larger object rail controls */
+#bkpm-root {
+  font-size: 13px;
+  line-height: 1.42;
+}
+
+#bkpm-root .bkpm-toolbar span,
+#bkpm-root .bkpm-map-hud .bkpm-main-toolbar span,
+#bkpm-root .bkpm-location-title,
+#bkpm-root .bkpm-footer-label {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+#bkpm-root button,
+#bkpm-root select,
+#bkpm-root input {
+  font-size: 13px;
+}
+
+#bkpm-root .bkpm-map-hud select {
+  height: 34px;
+  padding: 6px 10px;
+  color: #f4dfae;
+  font: 800 13px/1.2 Georgia, "Times New Roman", serif;
+}
+
+#bkpm-root .bkpm-map-hud select option {
+  color: #1d160d;
+  background: #fff8e8;
+  font: 700 14px/1.25 Georgia, "Times New Roman", serif;
+}
+
+#bkpm-root .bkpm-map-hud-panel {
+  gap: 8px;
+  padding: 9px 10px;
+}
+
+#bkpm-root .bkpm-map-zoom-row {
+  gap: 8px;
+}
+
+#bkpm-root .bkpm-hud-btn {
+  min-width: 44px;
+  height: 36px;
+  padding: 0 12px;
+  color: #f4dca4;
+  font: 900 13px/1 Georgia, "Times New Roman", serif;
+}
+
+#bkpm-root .bkpm-hud-btn.wide {
+  min-width: 68px;
+}
+
+#bkpm-root .bkpm-hud-btn.text {
+  min-width: 94px;
+}
+
+#bkpm-root .bkpm-hud-btn.clear-map {
+  min-width: 132px;
+  color: #ffd7a6;
+}
+
+#bkpm-root .bkpm-info-tabs button {
+  min-height: 38px;
+  color: #efd49a;
+  font: 800 14px/1.2 Georgia, "Times New Roman", serif;
+}
+
+#bkpm-root .bkpm-status {
+  font-size: 13px;
+}
+
+#bkpm-root .bkpm-status b {
+  font-size: 14px;
+}
+
+#bkpm-root .bkpm-event-rail {
+  left: 0;
+  width: 62px;
+  gap: 10px;
+  padding: 54px 7px 10px;
+  border-radius: 0 16px 16px 0;
+}
+
+#bkpm-root .bkpm-rail-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+}
+
+#bkpm-root .bkpm-rail-icon img {
+  width: 40px;
+  height: 40px;
+}
+
+#bkpm-root .bkpm-rail-toggle {
+  width: 36px;
+  height: 38px;
+  border-radius: 0 10px 10px 0;
+  font-size: 19px;
+}
+
+#bkpm-root .bkpm-map-hud {
+  left: 46px;
+}
+
+#bkpm-root .bkpm-map,
+#bkpm-root .bkpm-map.is-live {
+  padding-left: clamp(76px, 7vw, 96px);
+}
+
+@media (max-width: 640px) {
+  #bkpm-root .bkpm-control-group.presets {
+    flex: 1 1 100%;
+  }
+
+  #bkpm-root .bkpm-control-group.presets .bkpm-hud-btn {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  #bkpm-root .bkpm-map,
+  #bkpm-root .bkpm-map.is-live {
+    padding-top: 180px;
+    padding-left: 72px;
+  }
+}
+
+@media (max-height: 620px) {
+  #bkpm-root .bkpm-event-rail {
+    width: 54px;
+    padding: 46px 6px 8px;
+  }
+
+  #bkpm-root .bkpm-rail-icon {
+    width: 42px;
+    height: 42px;
+  }
+
+  #bkpm-root .bkpm-rail-icon img {
+    width: 34px;
+    height: 34px;
+  }
+
+  #bkpm-root .bkpm-hud-btn {
+    height: 32px;
+    font-size: 12px;
+  }
+}

@@ -808,6 +808,7 @@
                 <div class="bkpm-control-group presets">
                   <button class="bkpm-hud-btn text" type="button" data-action="zoom-player" aria-label="Максимально близко к игроку">Игрок</button>
                   <button class="bkpm-hud-btn text" type="button" data-action="zoom-fit" aria-label="Показать всю карту">Вся карта</button>
+                  <button class="bkpm-hud-btn text clear-map" type="button" data-action="map-clear" aria-label="Очистить посещения, зачистку и маршрут текущего этажа">Очистить карту</button>
                 </div>
               </div>
             </div>
@@ -1260,6 +1261,14 @@
       saveStateSoon();
       queueRender();
       requestAnimationFrame(() => fitMapToView('smooth'));
+      return;
+    }
+    if (action === 'map-clear') {
+      const map = getCurrentMap();
+      if (!map) return setStatus('Карта еще не загружена');
+      clearCurrentMapState(map);
+      saveStateSoon();
+      queueRender('Карта текущего этажа очищена');
       return;
     }
     if (action === 'center-current') {
@@ -4940,6 +4949,23 @@
   function isVisited(map, coord) {
     if (!map || !coord) return false;
     return Boolean(runtime.state.visited[`${map.dungeonId}:${map.floorId}:${coord}`]);
+  }
+
+  function clearCurrentMapState(map) {
+    if (!map) return;
+    const prefix = `${map.dungeonId}:${map.floorId}:`;
+    for (const key of Object.keys(runtime.state.visited || {})) {
+      if (key.startsWith(prefix)) delete runtime.state.visited[key];
+    }
+    for (const key of Object.keys(runtime.state.clearedMonsters || {})) {
+      if (key.startsWith(prefix)) delete runtime.state.clearedMonsters[key];
+    }
+    runtime.state.targetCoord = '';
+    runtime.state.routeStartCoord = '';
+    runtime.state.route = [];
+    runtime.state.routeBlocked = false;
+    runtime.state.selectedCoord = '';
+    runtime.cellMetaCache.clear();
   }
 
   function getClearedMonsterSet(map) {
