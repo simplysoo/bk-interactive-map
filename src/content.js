@@ -881,6 +881,10 @@
     root.addEventListener('change', event => {
       const target = event.target;
       if (!(target instanceof HTMLSelectElement)) return;
+      setTimeout(() => {
+        requestBridgeState(false);
+        scheduleGameSync('manual-map-select', true);
+      }, 0);
       if (target.matches('[data-role="dungeon"]')) {
         runtime.state.dungeonId = target.value;
         resetAutoMapDetect();
@@ -3590,12 +3594,13 @@
     runtime.autoMapDetect.lockedKey = '';
   }
 
-  function scheduleAutoMapDetect(game, dungeon, currentMap) {
-    if (!shouldScheduleAutoMapDetect(game, dungeon, currentMap)) return false;
+  function scheduleAutoMapDetect(game, dungeons, currentMap) {
+    const candidates = normalizeAutoMapDungeons(dungeons);
+    if (!shouldScheduleAutoMapDetect(game, candidates, currentMap)) return false;
     const state = runtime.autoMapDetect || (runtime.autoMapDetect = { signature: '', at: 0, promise: null, lockedKey: '' });
     const minimap = game && game.minimap;
     const signature = [
-      dungeon.id,
+      candidates.map(dungeon => dungeon.id).join(','),
       game.environment || '',
       Number.isFinite(game.floorNumber) ? game.floorNumber : '',
       Number.isFinite(minimap && minimap.x) ? minimap.x : '',
@@ -3608,7 +3613,7 @@
     if (state.signature === signature && now - (state.at || 0) < AUTO_MAP_DETECT_MIN_MS) return false;
     state.signature = signature;
     state.at = now;
-    state.promise = runAutoMapDetect(game, dungeon, signature)
+    state.promise = runAutoMapDetect(game, candidates, signature)
       .catch(error => {
         console.warn('[BKPM] auto map detection failed', error);
         return null;
@@ -3621,11 +3626,23 @@
     return true;
   }
 
-  function shouldScheduleAutoMapDetect(game, dungeon, currentMap) {
-    if (!game || !dungeon || !Array.isArray(dungeon.floors) || dungeon.floors.length < 2) return false;
+  function shouldScheduleAutoMapDetect(game, dungeons, currentMap) {
+    if (!game || !Array.isArray(dungeons) || !dungeons.length) return false;
     if (!hasMinimapTiles(game)) return false;
+    const currentDungeon = getCurrentDungeon();
     const currentFloor = getCurrentFloor();
-    const currentKey = dungeon && currentFloor ? mapKey(dungeon.id, currentFloor.id) : '';
+    const currentKey = currentDungeon && currentFloor ? mapKey(currentDungeon.id, currentFloor.id) : '';
+    const lockedKey = runtime.autoMapDetect && runtime.autoMapDetect.lockedKey;
+    const currentIsCandidate = Boolean(currentDungeon && dungeons.some(dungeon => dungeon.id === currentDungeon.id));
+    if (dungeons.length > 1) {
+      if (!currentIsCandidate) return true;
+      if (!currentMap || !runtime.playerMapCoord || !currentMap.cells || !currentMap.cells.has(runtime.playerMapCoord)) return true;
+      if (game.syncMode === 'search' || game.syncMode === 'hold') return true;
+      return lockedKey !== currentKey;
+    }
+    const dungeon = dungeons[0];
+    if (!dungeon || !Array.isArray(dungeon.floors) || dungeon.floors.length < 1) return false;
+    if (!currentIsCandidate) return true;
     if (Number.isFinite(game.floorNumber)) {
       const expectedFloor = findFloorByGameNumber(dungeon, game.floorNumber);
       if (!expectedFloor) return true;
@@ -3635,13 +3652,13 @@
     if (!currentMap) return true;
     if (!runtime.playerMapCoord || !currentMap.cells || !currentMap.cells.has(runtime.playerMapCoord)) return true;
     if (game.syncMode === 'search' || game.syncMode === 'hold') return true;
-    const lockedKey = runtime.autoMapDetect && runtime.autoMapDetect.lockedKey;
     return lockedKey !== currentKey;
   }
 
-  async function runAutoMapDetect(game, dungeon, signature) {
-    if (!game || !dungeon || !hasMinimapTiles(game)) return null;
-    const best = await findBestAutoMapCandidate(game, [dungeon], signature);
+  async function runAutoMapDetect(game, dungeons, signature) {
+    const candidates = normalizeAutoMapDungeons(dungeons);
+    if (!game || !candidates.length || !hasMinimapTiles(game)) return null;
+    const best = await findBestAutoMapCandidate(game, candidates, signature);
     if (!best) return null;
     applyAutoMapDetection(best);
     return best;
@@ -3801,6 +3818,35 @@
     add(detectDungeonByGame(game));
     add(getCurrentDungeon());
     for (const dungeon of DUNGEONS) add(dungeon);
+    return result;
+  }
+
+  function getBackgroundAutoMapDungeons(game, matchedDungeon) {
+    const result = [];
+    const environment = game && game.environment;
+    const currentDungeon = getCurrentDungeon();
+    const add = dungeon => {
+      if (!dungeon || !isDungeonCompatibleWithEnvironment(dungeon, environment)) return;
+      if (result.some(item => item.id === dungeon.id)) return;
+      result.push(dungeon);
+    };
+    if (matchedDungeon) {
+      add(matchedDungeon);
+      return result;
+    }
+    add(currentDungeon);
+    for (const dungeon of DUNGEONS) add(dungeon);
+    return result;
+  }
+
+  function normalizeAutoMapDungeons(dungeons) {
+    const source = Array.isArray(dungeons) ? dungeons : [dungeons];
+    const result = [];
+    for (const dungeon of source) {
+      if (!dungeon || !Array.isArray(dungeon.floors) || !dungeon.floors.length) continue;
+      if (result.some(item => item.id === dungeon.id)) continue;
+      result.push(dungeon);
+    }
     return result;
   }
 
@@ -4423,7 +4469,7 @@
       runtime.liveMap = buildLiveMap(game);
     }
 
-    scheduleAutoMapDetect(game, matchedDungeon || getCurrentDungeon(), getCurrentMap());
+    scheduleAutoMapDetect(game, getBackgroundAutoMapDungeons(game, matchedDungeon), getCurrentMap());
 
     const signature = [game.room, game.floorNumber, game.environment || '', runtime.playerMapCoord, game.rawCoord, game.direction, game.syncMode].join('|');
     if (signature !== previousSignature) {
