@@ -1214,7 +1214,7 @@
     if (action === 'loot-clear') {
       runtime.state.lootStats = {};
       runtime.state.lootEvents = [];
-      runtime.state.seenLootMessages = {};
+      markCurrentLootMessagesSeen(700);
       saveStateSoon();
       queueRender('Статистика дропа очищена');
       return;
@@ -2195,6 +2195,26 @@
       saveStateSoon();
     }
     return changed;
+  }
+
+  function markCurrentLootMessagesSeen(limit) {
+    const now = Date.now();
+    const seen = {};
+    const maxMessages = Number.isFinite(Number(limit)) ? Number(limit) : 700;
+    for (const context of getAccessibleContexts()) {
+      const doc = context.doc;
+      if (!doc) continue;
+      const allMessages = Array.from(doc.querySelectorAll('.Chat, .ct_message, .ct_chatfilter_marked'));
+      const messages = allMessages.slice(-maxMessages);
+      for (const message of messages) {
+        const text = cleanText(message.textContent || '');
+        if (!/поднял(?:а)?\s+предмет/i.test(text)) continue;
+        const key = hashText(text);
+        if (key) seen[key] = now;
+      }
+    }
+    runtime.state.seenLootMessages = trimObjectByKeys(seen, 700);
+    runtime.lastLootScan = now;
   }
 
   function extractPickedLootName(text) {
@@ -3964,7 +3984,8 @@
     }
     if (matchedDungeon && matchedDungeon.id !== runtime.state.dungeonId) {
       runtime.state.dungeonId = matchedDungeon.id;
-      runtime.state.floorId = matchedDungeon.floors[0] ? matchedDungeon.floors[0].id : runtime.state.floorId;
+      const matchedFloor = findFloorByGameNumber(matchedDungeon, game.floorNumber);
+      runtime.state.floorId = matchedFloor ? matchedFloor.id : (matchedDungeon.floors[0] ? matchedDungeon.floors[0].id : runtime.state.floorId);
       runtime.playerMapCoord = '';
       runtime.pendingMove = null;
       runtime.optimisticMove = null;
@@ -3977,7 +3998,7 @@
 
     const dungeon = getCurrentDungeon();
     if (dungeon && Number.isFinite(game.floorNumber)) {
-      const floor = dungeon.floors.find(item => String(item.title).includes(String(game.floorNumber)));
+      const floor = findFloorByGameNumber(dungeon, game.floorNumber);
       if (floor && floor.id !== runtime.state.floorId) {
         runtime.state.floorId = floor.id;
         runtime.playerMapCoord = '';
@@ -4226,7 +4247,7 @@
     const room = data && data.room ? String(data.room) : cleanText(context.doc.querySelector('#roomname') ? context.doc.querySelector('#roomname').textContent : '');
     const direction = extractDirectionFromMoveText(text) ||
       strictNormalizeGameDirection(data && data.movetextDirection);
-    const floorMatch = `${room} ${move.m1name || ''} ${move.m3name || ''} ${move.m5name || ''} ${move.m7name || ''}`.match(/этаж\s+(\d+)/i);
+    const floorNumber = extractGameFloorNumber(context, data, room);
     return {
       score,
       href: context.href,
@@ -4242,8 +4263,50 @@
       minimap,
       scene,
       environment,
-      floorNumber: floorMatch ? Number(floorMatch[1]) : null
+      floorNumber
     };
+  }
+
+  function extractGameFloorNumber(context, data, room) {
+    const directFields = [
+      data && data.floor,
+      data && data.floorNumber,
+      data && data.dungeon_floor,
+      data && data.etazh
+    ];
+    for (const value of directFields) {
+      const number = Number(value);
+      if (Number.isFinite(number) && number > 0 && number < 20) return number;
+    }
+
+    const doc = context && context.doc ? context.doc : null;
+    const candidates = [room];
+    if (doc && doc.querySelector) {
+      const roomNode = doc.querySelector('#roomname');
+      if (roomNode) candidates.push(roomNode.textContent || '');
+      if (doc.title) candidates.push(doc.title);
+    }
+
+    for (const value of candidates) {
+      const number = extractFloorNumberFromText(value);
+      if (Number.isFinite(number)) return number;
+    }
+    return null;
+  }
+
+  function extractFloorNumberFromText(value) {
+    const text = cleanText(value);
+    if (!text) return null;
+    const patterns = [
+      /(?:^|[^\d])(\d{1,2})\s*(?:этаж|эт\.)(?:\s|$|[^\d])/i,
+      /(?:этаж|эт\.)\s*[:№#-]?\s*(\d{1,2})(?:\s|$|[^\d])/i
+    ];
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      const number = match ? Number(match[1]) : NaN;
+      if (Number.isFinite(number) && number > 0 && number < 20) return number;
+    }
+    return null;
   }
 
   function extractGameMatrix(move) {
@@ -4476,6 +4539,15 @@
   function getCurrentFloor() {
     const dungeon = getCurrentDungeon();
     return dungeon ? dungeon.floors.find(floor => floor.id === runtime.state.floorId) || dungeon.floors[0] : null;
+  }
+
+  function findFloorByGameNumber(dungeon, floorNumber) {
+    const number = Number(floorNumber);
+    if (!dungeon || !Array.isArray(dungeon.floors) || !Number.isFinite(number)) return null;
+    return dungeon.floors.find(floor => {
+      const titleNumber = extractFloorNumberFromText(floor && floor.title);
+      return titleNumber === number;
+    }) || null;
   }
 
   function getCurrentMap() {
