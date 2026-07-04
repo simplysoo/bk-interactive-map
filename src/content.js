@@ -20,6 +20,7 @@
   const OPTIMISTIC_MOVE_GRACE_MS = 1250;
   const OPTIMISTIC_TURN_GRACE_MS = 700;
   const KEY_REPEAT_SYNC_MIN_MS = 140;
+  const AUTO_MAP_DETECT_MIN_MS = 900;
   const DUNGMAP_CELL_SIZE = 15;
   const DUNGMAP_TILE_OFFSET = -8;
   const DUNGMAP_USER_OFFSET = 1;
@@ -77,6 +78,7 @@
     optimisticMove: null,
     pendingMove: null,
     lastDungeonKey: { token: '', at: 0 },
+    autoMapDetect: { signature: '', at: 0, promise: null, lockedKey: '' },
     mapDrag: null,
     mapCellTap: null,
     mapCellClickGuard: null,
@@ -881,6 +883,7 @@
       if (!(target instanceof HTMLSelectElement)) return;
       if (target.matches('[data-role="dungeon"]')) {
         runtime.state.dungeonId = target.value;
+        resetAutoMapDetect();
         const dungeon = getCurrentDungeon();
         runtime.state.floorId = dungeon && dungeon.floors[0] ? dungeon.floors[0].id : '';
         runtime.state.selectedCoord = '';
@@ -895,6 +898,7 @@
       }
       if (target.matches('[data-role="floor"]')) {
         runtime.state.floorId = target.value;
+        resetAutoMapDetect();
         runtime.state.selectedCoord = '';
         runtime.state.targetCoord = '';
         runtime.state.routeStartCoord = '';
@@ -3552,6 +3556,186 @@
     return best;
   }
 
+  function resetAutoMapDetect() {
+    if (!runtime.autoMapDetect || typeof runtime.autoMapDetect !== 'object') {
+      runtime.autoMapDetect = { signature: '', at: 0, promise: null, lockedKey: '' };
+      return;
+    }
+    runtime.autoMapDetect.signature = '';
+    runtime.autoMapDetect.at = 0;
+    runtime.autoMapDetect.promise = null;
+    runtime.autoMapDetect.lockedKey = '';
+  }
+
+  function scheduleAutoMapDetect(game, dungeon, currentMap) {
+    if (!shouldScheduleAutoMapDetect(game, dungeon, currentMap)) return false;
+    const state = runtime.autoMapDetect || (runtime.autoMapDetect = { signature: '', at: 0, promise: null, lockedKey: '' });
+    const minimap = game && game.minimap;
+    const signature = [
+      dungeon.id,
+      game.environment || '',
+      Number.isFinite(game.floorNumber) ? game.floorNumber : '',
+      Number.isFinite(minimap && minimap.x) ? minimap.x : '',
+      Number.isFinite(minimap && minimap.y) ? minimap.y : '',
+      minimapSignature(minimap),
+      getCurrentMapKey()
+    ].join('|');
+    if (!signature || state.signature === signature && state.promise) return true;
+    const now = Date.now();
+    if (state.signature === signature && now - (state.at || 0) < AUTO_MAP_DETECT_MIN_MS) return false;
+    state.signature = signature;
+    state.at = now;
+    state.promise = runAutoMapDetect(game, dungeon, signature)
+      .catch(error => {
+        console.warn('[BKPM] auto map detection failed', error);
+        return null;
+      })
+      .finally(() => {
+        if (runtime.autoMapDetect && runtime.autoMapDetect.signature === signature) {
+          runtime.autoMapDetect.promise = null;
+        }
+      });
+    return true;
+  }
+
+  function shouldScheduleAutoMapDetect(game, dungeon, currentMap) {
+    if (!game || !dungeon || !Array.isArray(dungeon.floors) || dungeon.floors.length < 2) return false;
+    if (!hasMinimapTiles(game)) return false;
+    const currentFloor = getCurrentFloor();
+    const currentKey = dungeon && currentFloor ? mapKey(dungeon.id, currentFloor.id) : '';
+    if (Number.isFinite(game.floorNumber)) {
+      const expectedFloor = findFloorByGameNumber(dungeon, game.floorNumber);
+      if (!expectedFloor) return true;
+      const expectedKey = mapKey(dungeon.id, expectedFloor.id);
+      return currentKey !== expectedKey || !currentMap || !runtime.playerMapCoord || game.syncMode === 'search';
+    }
+    if (!currentMap) return true;
+    if (!runtime.playerMapCoord || !currentMap.cells || !currentMap.cells.has(runtime.playerMapCoord)) return true;
+    if (game.syncMode === 'search' || game.syncMode === 'hold') return true;
+    const lockedKey = runtime.autoMapDetect && runtime.autoMapDetect.lockedKey;
+    return lockedKey !== currentKey;
+  }
+
+  async function runAutoMapDetect(game, dungeon, signature) {
+    if (!game || !dungeon || !hasMinimapTiles(game)) return null;
+    const detectionGame = game.scene && Array.isArray(game.scene.images) && game.scene.images.length
+      ? game
+      : Object.assign({}, game, { scene: readVisibleScene() });
+    const floors = getAutoMapDetectFloors(dungeon, game);
+    if (!floors.length) return null;
+    let best = null;
+    let second = null;
+    for (const floor of floors) {
+      if (!floor) continue;
+      if (!isAutoMapDetectCurrent(signature)) return null;
+      const map = await loadPreloadedMap(dungeon, floor);
+      if (!map) continue;
+      const resolved = resolveGameCoordByMinimap(detectionGame, map);
+      if (!resolved || !resolved.coord) continue;
+      const candidate = {
+        dungeon,
+        floor,
+        map,
+        resolved,
+        score: Number(resolved.score) || 0,
+        matches: Number(resolved.matches) || 0
+      };
+      if (!best || candidate.score > best.score) {
+        second = best;
+        best = candidate;
+      } else if (!second || candidate.score > second.score) {
+        second = candidate;
+      }
+      await yieldToBrowser();
+    }
+    if (!isReliableAutoMapChoice(best, second)) return null;
+    if (!isAutoMapDetectCurrent(signature)) return null;
+    applyAutoMapDetection(best);
+    return best;
+  }
+
+  function getAutoMapDetectFloors(dungeon, game) {
+    if (!dungeon || !Array.isArray(dungeon.floors)) return [];
+    if (Number.isFinite(game && game.floorNumber)) {
+      const floor = findFloorByGameNumber(dungeon, game.floorNumber);
+      return floor ? [floor] : dungeon.floors.slice();
+    }
+    const currentFloor = getCurrentFloor();
+    const result = [];
+    const matchingCurrentFloor = currentFloor
+      ? dungeon.floors.find(floor => floor && floor.id === currentFloor.id)
+      : null;
+    if (matchingCurrentFloor) {
+      result.push(matchingCurrentFloor);
+    }
+    for (const floor of dungeon.floors) {
+      if (!floor || result.some(item => item.id === floor.id)) continue;
+      result.push(floor);
+    }
+    return result;
+  }
+
+  function isReliableAutoMapChoice(best, second) {
+    if (!best || !best.resolved || !best.resolved.coord) return false;
+    if (best.matches < 6 || best.score < 45) return false;
+    if (!second) return true;
+    const margin = best.score - second.score;
+    if (margin >= 22) return true;
+    if ((best.resolved.sceneMatches || 0) > 0 && margin >= 8) return true;
+    return margin >= Math.max(30, Math.floor(Math.abs(best.score) * 0.08));
+  }
+
+  function isAutoMapDetectCurrent(signature) {
+    return Boolean(signature && runtime.autoMapDetect && runtime.autoMapDetect.signature === signature);
+  }
+
+  function applyAutoMapDetection(candidate) {
+    const dungeon = candidate && candidate.dungeon;
+    const floor = candidate && candidate.floor;
+    const map = candidate && candidate.map;
+    const resolved = candidate && candidate.resolved;
+    if (!dungeon || !floor || !map || !resolved || !resolved.coord) return false;
+    const key = mapKey(dungeon.id, floor.id);
+    const currentKey = getCurrentMapKey();
+    const changedFloor = currentKey !== key || runtime.state.dungeonId !== dungeon.id || runtime.state.floorId !== floor.id;
+    runtime.state.dungeonId = dungeon.id;
+    runtime.state.floorId = floor.id;
+    runtime.mapByKey.set(key, map);
+    pruneMapCacheToCurrent();
+    invalidateCellCaches();
+    runtime.pendingMove = null;
+    runtime.optimisticMove = null;
+    runtime.liveMap = null;
+    runtime.playerMapCoord = resolved.coord;
+    const direction = (runtime.game && runtime.game.direction) ||
+      (runtime.state.lastPlayer && runtime.state.lastPlayer.direction) ||
+      '';
+    if (runtime.game) {
+      runtime.game.coord = resolved.coord;
+      runtime.game.syncMode = `auto-${resolved.mode || 'minimap'}`;
+      runtime.game.syncScore = resolved.score;
+      runtime.game.syncMatches = resolved.matches;
+      if (direction) runtime.game.direction = direction;
+    }
+    if (changedFloor) {
+      runtime.state.targetCoord = '';
+      runtime.state.routeStartCoord = '';
+      runtime.state.route = [];
+      runtime.state.routeBlocked = false;
+    }
+    runtime.state.selectedCoord = resolved.coord;
+    markVisited(map, resolved.coord);
+    persistLastPlayer(map, resolved.coord, direction, runtime.game ? runtime.game.syncMode : 'auto-minimap');
+    if (runtime.autoMapDetect) runtime.autoMapDetect.lockedKey = key;
+    runtime.lastCenteredCoord = '';
+    updateDungeonControls();
+    scheduleGuideLoad(false);
+    saveStateSoon();
+    queueRender('Карта и позиция определены автоматически');
+    setTimeout(() => centerOnCoord(resolved.coord, 'auto'), 80);
+    return true;
+  }
+
   function getMinimapPatternDelta(current, previous) {
     if (!current || !previous || !Array.isArray(current.tiles) || !Array.isArray(previous.tiles)) return null;
     const previousTiles = new Map();
@@ -3983,6 +4167,7 @@
       fullRenderNeeded = true;
     }
     if (matchedDungeon && matchedDungeon.id !== runtime.state.dungeonId) {
+      resetAutoMapDetect();
       runtime.state.dungeonId = matchedDungeon.id;
       const matchedFloor = findFloorByGameNumber(matchedDungeon, game.floorNumber);
       runtime.state.floorId = matchedFloor ? matchedFloor.id : (matchedDungeon.floors[0] ? matchedDungeon.floors[0].id : runtime.state.floorId);
@@ -4000,6 +4185,7 @@
     if (dungeon && Number.isFinite(game.floorNumber)) {
       const floor = findFloorByGameNumber(dungeon, game.floorNumber);
       if (floor && floor.id !== runtime.state.floorId) {
+        resetAutoMapDetect();
         runtime.state.floorId = floor.id;
         runtime.playerMapCoord = '';
         runtime.pendingMove = null;
@@ -4009,6 +4195,9 @@
         scheduleMapLoad(false);
         changed = true;
         fullRenderNeeded = true;
+      }
+      if (floor && runtime.autoMapDetect) {
+        runtime.autoMapDetect.lockedKey = mapKey(dungeon.id, floor.id);
       }
     }
 
@@ -4073,6 +4262,8 @@
     if (!getCurrentMap() && Array.isArray(game.matrix) && game.matrix.length) {
       runtime.liveMap = buildLiveMap(game);
     }
+
+    scheduleAutoMapDetect(game, matchedDungeon || getCurrentDungeon(), getCurrentMap());
 
     const signature = [game.room, game.floorNumber, game.environment || '', runtime.playerMapCoord, game.rawCoord, game.direction, game.syncMode].join('|');
     if (signature !== previousSignature) {
