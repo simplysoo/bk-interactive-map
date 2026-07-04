@@ -1100,7 +1100,12 @@
     }
   }
 
-  function refreshPlayerLocation() {
+  async function refreshPlayerLocation(options = {}) {
+    const settings = Object.assign({
+      center: true,
+      render: true,
+      forceMap: true
+    }, options || {});
     runtime.pendingMove = null;
     runtime.optimisticMove = null;
     runtime.playerMapCoord = '';
@@ -1110,14 +1115,31 @@
     runtime.contextCache = null;
     requestBridgeState(false);
     renderSyncResult(syncGameState());
-    const coord = getCurrentCoord();
+    let coord = getCurrentCoord();
+    let detected = null;
+    if (settings.forceMap) {
+      detected = await forceAutoMapDetection();
+      if (detected && detected.resolved && detected.resolved.coord) {
+        coord = detected.resolved.coord;
+      }
+    }
+    if (!coord && settings.forceMap) {
+      requestBridgeState(true);
+      await new Promise(resolve => setTimeout(resolve, 120));
+      detected = await forceAutoMapDetection();
+      if (detected && detected.resolved && detected.resolved.coord) {
+        coord = detected.resolved.coord;
+      }
+    }
+    if (!coord) coord = getCurrentCoord();
     if (coord) {
-      setTimeout(() => centerOnCoord(coord, 'smooth'), 80);
-      queueRender(`Местоположение обновлено: ${coord}`);
+      if (settings.center) setTimeout(() => centerOnCoord(coord, 'smooth'), 80);
+      if (settings.render) queueRender(`Местоположение обновлено: ${coord}`);
     } else {
-      queueRender('Ищу текущее местоположение...');
+      if (settings.render) queueRender('Ищу текущее местоположение...');
     }
     scheduleGameSync('refresh-location', true);
+    return { coord, detected };
   }
 
   async function handleAction(action, source) {
@@ -1135,7 +1157,7 @@
       return;
     }
     if (action === 'refresh-location' || action === 'refresh') {
-      refreshPlayerLocation();
+      await refreshPlayerLocation();
       saveStateSoon();
       return;
     }
@@ -1248,6 +1270,7 @@
       return;
     }
     if (action === 'zoom-player') {
+      await refreshPlayerLocation({ center: false, render: false, forceMap: true });
       const map = getCurrentMap();
       const coord = getCurrentCoord() || runtime.playerMapCoord || (map ? getStoredPlayerCoordForMap(map) || map.startCoord : '');
       setZoomValue(getPlayerCloseZoomValue(map));
@@ -3618,40 +3641,131 @@
 
   async function runAutoMapDetect(game, dungeon, signature) {
     if (!game || !dungeon || !hasMinimapTiles(game)) return null;
+    const best = await findBestAutoMapCandidate(game, [dungeon], signature);
+    if (!best) return null;
+    applyAutoMapDetection(best);
+    return best;
+  }
+
+  async function forceAutoMapDetection() {
+    resetAutoMapDetect();
+    const game = detectGameState();
+    if (!game || !hasMinimapTiles(game)) return null;
+    runtime.game = game;
+    const dungeons = getManualAutoMapDungeons(game);
+    if (!dungeons.length) return null;
+    const minimap = game.minimap || {};
+    const signature = [
+      'manual',
+      Date.now(),
+      game.environment || '',
+      Number.isFinite(game.floorNumber) ? game.floorNumber : '',
+      Number.isFinite(minimap.x) ? minimap.x : '',
+      Number.isFinite(minimap.y) ? minimap.y : '',
+      minimapSignature(minimap)
+    ].join('|');
+    const state = runtime.autoMapDetect || (runtime.autoMapDetect = { signature: '', at: 0, promise: null, lockedKey: '' });
+    state.signature = signature;
+    state.at = Date.now();
+    state.promise = null;
+    const best = await findBestAutoMapCandidate(game, dungeons, signature);
+    if (!best || !isAutoMapDetectCurrent(signature)) return null;
+    applyAutoMapDetection(best);
+    return best;
+  }
+
+  async function findBestAutoMapCandidate(game, dungeons, signature) {
+    if (!game || !hasMinimapTiles(game) || !Array.isArray(dungeons) || !dungeons.length) return null;
     const detectionGame = game.scene && Array.isArray(game.scene.images) && game.scene.images.length
       ? game
       : Object.assign({}, game, { scene: readVisibleScene() });
-    const floors = getAutoMapDetectFloors(dungeon, game);
-    if (!floors.length) return null;
     let best = null;
     let second = null;
-    for (const floor of floors) {
-      if (!floor) continue;
-      if (!isAutoMapDetectCurrent(signature)) return null;
-      const map = await loadPreloadedMap(dungeon, floor);
-      if (!map) continue;
-      const resolved = resolveGameCoordByMinimap(detectionGame, map);
-      if (!resolved || !resolved.coord) continue;
-      const candidate = {
-        dungeon,
-        floor,
-        map,
-        resolved,
-        score: Number(resolved.score) || 0,
-        matches: Number(resolved.matches) || 0
-      };
-      if (!best || candidate.score > best.score) {
-        second = best;
-        best = candidate;
-      } else if (!second || candidate.score > second.score) {
-        second = candidate;
+    const snapshots = new Map();
+    for (const dungeon of dungeons) {
+      if (!dungeon) continue;
+      const floors = getAutoMapDetectFloors(dungeon, game);
+      for (const floor of floors) {
+        if (!floor) continue;
+        if (!isAutoMapDetectCurrent(signature)) {
+          restoreAutoMapCalibrationSnapshots(snapshots, '');
+          return null;
+        }
+        const map = await loadPreloadedMap(dungeon, floor);
+        if (!map) continue;
+        const calibrationKey = `${dungeon.id}:${floor.id}`;
+        snapshotAutoMapCalibration(snapshots, calibrationKey);
+        const resolved = resolveGameCoordByMinimap(detectionGame, map);
+        if (!resolved || !resolved.coord) continue;
+        const candidate = {
+          dungeon,
+          floor,
+          map,
+          resolved,
+          calibrationKey,
+          score: Number(resolved.score) || 0,
+          matches: Number(resolved.matches) || 0
+        };
+        if (!best || candidate.score > best.score) {
+          second = best;
+          best = candidate;
+        } else if (!second || candidate.score > second.score) {
+          second = candidate;
+        }
+        await yieldToBrowser();
       }
-      await yieldToBrowser();
     }
-    if (!isReliableAutoMapChoice(best, second)) return null;
-    if (!isAutoMapDetectCurrent(signature)) return null;
-    applyAutoMapDetection(best);
+    if (!isReliableAutoMapChoice(best, second)) {
+      restoreAutoMapCalibrationSnapshots(snapshots, '');
+      return null;
+    }
+    restoreAutoMapCalibrationSnapshots(snapshots, best.calibrationKey || '');
     return best;
+  }
+
+  function snapshotAutoMapCalibration(snapshots, key) {
+    if (!snapshots || !key || snapshots.has(key)) return;
+    snapshots.set(key, {
+      hasMinimap: Object.prototype.hasOwnProperty.call(runtime.minimapCalibration, key),
+      minimap: runtime.minimapCalibration[key],
+      hasCoord: Object.prototype.hasOwnProperty.call(runtime.coordCalibration, key),
+      coord: runtime.coordCalibration[key]
+    });
+  }
+
+  function restoreAutoMapCalibrationSnapshots(snapshots, keepKey) {
+    if (!snapshots) return;
+    for (const [key, snapshot] of snapshots.entries()) {
+      if (key === keepKey) continue;
+      if (snapshot.hasMinimap) runtime.minimapCalibration[key] = snapshot.minimap;
+      else delete runtime.minimapCalibration[key];
+      if (snapshot.hasCoord) runtime.coordCalibration[key] = snapshot.coord;
+      else delete runtime.coordCalibration[key];
+    }
+  }
+
+  function getManualAutoMapDungeons(game) {
+    const result = [];
+    const environment = game && game.environment;
+    const add = dungeon => {
+      if (!dungeon || !isDungeonCompatibleWithEnvironment(dungeon, environment)) return;
+      if (result.some(item => item.id === dungeon.id)) return;
+      result.push(dungeon);
+    };
+    add(detectDungeonByGame(game));
+    add(getCurrentDungeon());
+    for (const dungeon of DUNGEONS) add(dungeon);
+    return result;
+  }
+
+  function isDungeonCompatibleWithEnvironment(dungeon, environment) {
+    if (!dungeon) return false;
+    const value = String(environment || '').toLowerCase();
+    if (!value) return true;
+    if (value === 'sun') return dungeon.id === 'gribnica';
+    if (value === 'angels') return dungeon.id === 'bezdna';
+    if (value === 'emeraldscity') return dungeon.id !== 'gribnica' && dungeon.id !== 'bezdna';
+    return true;
   }
 
   function getAutoMapDetectFloors(dungeon, game) {
