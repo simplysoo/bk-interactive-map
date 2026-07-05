@@ -21,6 +21,8 @@
   const OPTIMISTIC_TURN_GRACE_MS = 700;
   const KEY_REPEAT_SYNC_MIN_MS = 140;
   const AUTO_MAP_DETECT_MIN_MS = 900;
+  const VIRTUAL_MAP_CELL_THRESHOLD = 420;
+  const VIRTUAL_MAP_OVERSCAN = 4;
   const DUNGMAP_CELL_SIZE = 15;
   const DUNGMAP_TILE_OFFSET = -8;
   const DUNGMAP_USER_OFFSET = 1;
@@ -942,7 +944,18 @@
         clearMapCellTap(event);
         handleMapPointerEnd(event);
       });
+      mapWrap.addEventListener('scroll', scheduleMapViewportRender, { passive: true });
     }
+  }
+
+  function scheduleMapViewportRender() {
+    const map = getCurrentMap();
+    if (!isVirtualMapEnabled(map)) return;
+    if (scheduleMapViewportRender.frame) return;
+    scheduleMapViewportRender.frame = requestAnimationFrame(() => {
+      scheduleMapViewportRender.frame = 0;
+      queueRender();
+    });
   }
 
   function installResponsiveRender() {
@@ -1985,13 +1998,14 @@
     mapEl.style.gridTemplateColumns = `repeat(${map.maxCol}, var(--bkpm-cell))`;
     mapEl.style.gridTemplateRows = `repeat(${map.maxRow}, var(--bkpm-cell))`;
 
-    const nextMapRenderKey = getMapRenderKey(map, cssSize);
-    const hasRenderedCells = Boolean(mapEl.querySelector('.bkpm-cell[data-coord]'));
-    if (runtime.mapRenderKey !== nextMapRenderKey || mapEl.__bkpmMapRenderKey !== nextMapRenderKey || !hasRenderedCells) {
+    const renderWindow = getMapRenderWindow(map, mapEl, mapWrapEl, cssSize);
+    mapEl.classList.toggle('is-virtual', renderWindow.virtual);
+    const nextMapRenderKey = getMapRenderKey(map, cssSize, renderWindow);
+    if (runtime.mapRenderKey !== nextMapRenderKey || mapEl.__bkpmMapRenderKey !== nextMapRenderKey) {
       const routeSet = new Set(runtime.state.route || []);
       const visitedSet = getVisitedSet(map);
       const clearedMonsterSet = getClearedMonsterSet(map);
-      const cells = Array.from(map.cells.values()).sort((a, b) => a.row - b.row || a.col - b.col);
+      const cells = getRenderableCells(map, renderWindow);
       const cellsHtml = cells.map(cell => renderCell(cell, {
         currentCoord,
         routeSet,
@@ -2020,7 +2034,7 @@
     updateStatusLine();
   }
 
-  function getMapRenderKey(map, cssSize) {
+  function getMapRenderKey(map, cssSize, renderWindow) {
     if (!map) return 'no-map';
     return [
       mapKey(map.dungeonId, map.floorId),
@@ -2032,8 +2046,52 @@
       runtime.state.targetCoord || '',
       runtime.state.routeBlocked ? 'blocked' : '',
       Array.isArray(runtime.state.route) ? runtime.state.route.join(',') : '',
-      runtime.mapRenderRevision || 0
+      runtime.mapRenderRevision || 0,
+      renderWindow && renderWindow.virtual ? renderWindow.key : 'full'
     ].join('|');
+  }
+
+  function isVirtualMapEnabled(map) {
+    return Boolean(map && map.source !== 'live' && map.cells && map.cells.size >= VIRTUAL_MAP_CELL_THRESHOLD);
+  }
+
+  function getMapRenderWindow(map, mapEl, mapWrapEl, cssSize) {
+    const full = {
+      virtual: false,
+      key: 'full',
+      minCol: 1,
+      maxCol: map && map.maxCol ? map.maxCol : 1,
+      minRow: 1,
+      maxRow: map && map.maxRow ? map.maxRow : 1
+    };
+    if (!isVirtualMapEnabled(map) || !mapEl || !mapWrapEl) return full;
+    const metrics = getMapLayoutMetrics(mapEl);
+    const step = Math.max(1, Number(cssSize) || CELL_SIZE_MIN) + metrics.gap;
+    const left = Math.max(0, mapWrapEl.scrollLeft - metrics.paddingLeft);
+    const top = Math.max(0, mapWrapEl.scrollTop - metrics.paddingTop);
+    const right = left + Math.max(1, mapWrapEl.clientWidth);
+    const bottom = top + Math.max(1, mapWrapEl.clientHeight);
+    const minCol = clamp(Math.floor(left / step) + 1 - VIRTUAL_MAP_OVERSCAN, 1, map.maxCol);
+    const maxCol = clamp(Math.ceil(right / step) + VIRTUAL_MAP_OVERSCAN, minCol, map.maxCol);
+    const minRow = clamp(Math.floor(top / step) + 1 - VIRTUAL_MAP_OVERSCAN, 1, map.maxRow);
+    const maxRow = clamp(Math.ceil(bottom / step) + VIRTUAL_MAP_OVERSCAN, minRow, map.maxRow);
+    return {
+      virtual: true,
+      key: `${minCol}:${maxCol}:${minRow}:${maxRow}`,
+      minCol,
+      maxCol,
+      minRow,
+      maxRow
+    };
+  }
+
+  function getRenderableCells(map, renderWindow) {
+    const cells = Array.from(map.cells.values());
+    const window = renderWindow || {};
+    const filtered = window.virtual
+      ? cells.filter(cell => cell.col >= window.minCol && cell.col <= window.maxCol && cell.row >= window.minRow && cell.row <= window.maxRow)
+      : cells;
+    return filtered.sort((a, b) => a.row - b.row || a.col - b.col);
   }
 
   function bumpMapRenderRevision() {
@@ -3301,7 +3359,7 @@
   }
 
   function canFastMapUpdate(map) {
-    if (!map || !runtime.root || runtime.state.targetCoord || runtime.state.route.length) return false;
+    if (!map || !runtime.root) return false;
     if (runtime.renderedMapKey !== mapKey(map.dungeonId, map.floorId)) return false;
     const mapEl = runtime.root.querySelector('[data-role="map"]');
     return Boolean(mapEl && mapEl.querySelector('.bkpm-cell[data-coord]'));
@@ -6131,15 +6189,32 @@
 
   function centerOnCoord(coord, behavior) {
     if (!coord) return;
-    const wrap = runtime.root.querySelector('[data-role="mapWrap"]');
-    const button = runtime.root.querySelector(`.bkpm-cell[data-coord="${CSS.escape(coord)}"]`);
-    if (!wrap || !button) return;
+    const map = getCurrentMap();
+    const cell = map && map.cells ? map.cells.get(coord) : null;
+    const wrap = runtime.root && runtime.root.querySelector('[data-role="mapWrap"]');
+    const mapEl = runtime.root && runtime.root.querySelector('[data-role="map"]');
+    if (!wrap || !mapEl || !cell) return;
+    const metrics = getMapLayoutMetrics(mapEl);
+    const cellSize = getRenderedMapCellSize(map);
+    const step = cellSize + metrics.gap;
     const hudOffset = getMapHudOffset();
     const visibleHeight = Math.max(140, wrap.clientHeight - hudOffset);
     const targetY = hudOffset + visibleHeight / 2;
-    const left = button.offsetLeft - wrap.clientWidth / 2 + button.clientWidth / 2;
-    const top = button.offsetTop - targetY + button.clientHeight / 2;
+    const cellLeft = metrics.paddingLeft + Math.max(0, cell.col - 1) * step;
+    const cellTop = metrics.paddingTop + Math.max(0, cell.row - 1) * step;
+    const left = cellLeft - wrap.clientWidth / 2 + cellSize / 2;
+    const top = cellTop - targetY + cellSize / 2;
     wrap.scrollTo({ left: Math.max(0, left), top: Math.max(0, top), behavior: behavior || 'smooth' });
+    scheduleMapViewportRender();
+  }
+
+  function getRenderedMapCellSize(map) {
+    const mapEl = runtime.root && runtime.root.querySelector('[data-role="map"]');
+    if (mapEl && typeof getComputedStyle === 'function') {
+      const parsed = parseFloat(getComputedStyle(mapEl).getPropertyValue('--bkpm-cell'));
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+    return clamp(Math.round(getAutoCellSize(map) * getZoomValue()), CELL_SIZE_MIN, CELL_SIZE_MAX);
   }
 
   function getMapHudOffset() {
