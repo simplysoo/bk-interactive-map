@@ -3413,6 +3413,7 @@
     const raw = String(value || '').toLowerCase();
     if (/\/\/(?:[^/]*\.)?suncity\.combats\.com\b/.test(raw)) return 'sun';
     if (/\/\/(?:[^/]*\.)?angelscity\.combats\.com\b/.test(raw)) return 'angels';
+    if (/\/\/(?:[^/]*\.)?eastcity\.combats\.com\b/.test(raw)) return 'east';
     if (/\/\/(?:[^/]*\.)?emeralds?city\.combats\.com\b/.test(raw)) return 'emeraldscity';
     return dungeonEnvironmentFromText(raw);
   }
@@ -3423,6 +3424,7 @@
     const token = spriteMatch ? spriteMatch[1] : raw;
     if (/(^|[^a-z])sun(?:city)?([^a-z]|$)/i.test(token)) return 'sun';
     if (/(^|[^a-z])angels(?:city)?([^a-z]|$)/i.test(token)) return 'angels';
+    if (/(^|[^a-z])east(?:city)?([^a-z]|$)/i.test(token)) return 'east';
     if (/(^|[^a-z])emeralds?city([^a-z]|$)/i.test(token)) return 'emeraldscity';
     return '';
   }
@@ -3864,7 +3866,8 @@
     if (!value) return true;
     if (value === 'sun') return dungeon.id === 'gribnica';
     if (value === 'angels') return dungeon.id === 'bezdna';
-    if (value === 'emeraldscity') return dungeon.id !== 'gribnica' && dungeon.id !== 'bezdna';
+    if (value === 'east') return dungeon.id === 'abode';
+    if (value === 'emeraldscity') return dungeon.id !== 'gribnica' && dungeon.id !== 'bezdna' && dungeon.id !== 'abode';
     return true;
   }
 
@@ -4900,6 +4903,7 @@
     const value = String(environment || '').toLowerCase();
     if (value === 'sun') return DUNGEONS.find(dungeon => dungeon.id === 'gribnica') || null;
     if (value === 'angels') return DUNGEONS.find(dungeon => dungeon.id === 'bezdna') || null;
+    if (value === 'east') return DUNGEONS.find(dungeon => dungeon.id === 'abode') || null;
     return null;
   }
 

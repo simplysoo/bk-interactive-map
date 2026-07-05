@@ -643,5 +643,96 @@ window.BK_PALADINS_DUNGEONS = [
         url: 'https://lib.paladins.ru/dungeons/pm/guide/monsters/'
       }
     ]
+  },
+  {
+    id: 'abode',
+    title: 'Обитель Древних',
+    aliases: [
+      'Обитель Древних',
+      'Обители Древних',
+      'Обители',
+      'Обитель',
+      'abode'
+    ],
+    urlAliases: [
+      'eastcity.combats.com',
+      'eastcity',
+      'east'
+    ],
+    floors: [
+      {
+        id: 'stage_1',
+        title: '1 этаж',
+        url: 'https://lib.paladins.ru/dungeons/abode/maps/stage_1/'
+      },
+      {
+        id: 'stage_2',
+        title: '2 этаж - Коридоры Древних',
+        url: 'https://lib.paladins.ru/dungeons/abode/maps/stage_2/'
+      },
+      {
+        id: 'stage_ancients_L',
+        title: 'Тоннели Посвящения',
+        url: 'https://lib.paladins.ru/dungeons/abode/maps/stage_ancients_L/'
+      },
+      {
+        id: 'stage_ancients_R',
+        title: 'Тоннели Мучений',
+        url: 'https://lib.paladins.ru/dungeons/abode/maps/stage_ancients_R/'
+      },
+      {
+        id: 'stage_ancients_B',
+        title: 'Коридоры Блужданий',
+        url: 'https://lib.paladins.ru/dungeons/abode/maps/stage_ancients_B/'
+      },
+      {
+        id: 'stage_task_25000',
+        title: 'Башня Магов',
+        url: 'https://lib.paladins.ru/dungeons/abode/maps/stage_task_25000/'
+      },
+      {
+        id: 'stage_task_30000',
+        title: 'Сокровищница Алхимиков',
+        url: 'https://lib.paladins.ru/dungeons/abode/maps/stage_task_30000/'
+      }
+    ],
+    guides: [
+      {
+        id: 'intro',
+        type: 'intro',
+        title: 'Общая информация',
+        url: 'https://lib.paladins.ru/dungeons/abode/guide/'
+      },
+      {
+        id: 'stage_2',
+        type: 'floor',
+        title: '2 этаж и тоннели',
+        url: 'https://lib.paladins.ru/dungeons/abode/guide/stage_2/'
+      },
+      {
+        id: 'buckle',
+        type: 'object',
+        title: 'Пряжки для пояса',
+        url: 'https://lib.paladins.ru/dungeons/abode/guide/buckle/'
+      },
+      {
+        id: 'npc',
+        type: 'npc',
+        title: 'Диалоговые боты',
+        url: 'https://lib.paladins.ru/dungeons/abode/guide/npc/'
+      },
+      {
+        id: 'monsters',
+        type: 'monster',
+        title: 'Боевые боты',
+        url: 'https://lib.paladins.ru/dungeons/abode/guide/monsters/'
+      },
+      {
+        id: 'objects',
+        type: 'object',
+        title: 'Тайники',
+        url: 'https://lib.paladins.ru/dungeons/abode/guide/objects/'
+      }
+    ]
   }
 ];
