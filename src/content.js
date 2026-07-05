@@ -3635,10 +3635,7 @@
     const lockedKey = runtime.autoMapDetect && runtime.autoMapDetect.lockedKey;
     const currentIsCandidate = Boolean(currentDungeon && dungeons.some(dungeon => dungeon.id === currentDungeon.id));
     if (dungeons.length > 1) {
-      if (!currentIsCandidate) return true;
-      if (!currentMap || !runtime.playerMapCoord || !currentMap.cells || !currentMap.cells.has(runtime.playerMapCoord)) return true;
-      if (game.syncMode === 'search' || game.syncMode === 'hold') return true;
-      return lockedKey !== currentKey;
+      return true;
     }
     const dungeon = dungeons[0];
     if (!dungeon || !Array.isArray(dungeon.floors) || dungeon.floors.length < 1) return false;
@@ -3758,7 +3755,7 @@
         if (!map) continue;
         const calibrationKey = `${dungeon.id}:${floor.id}`;
         snapshotAutoMapCalibration(snapshots, calibrationKey);
-        const resolved = resolveGameCoordByMinimap(detectionGame, map);
+        const resolved = resolveGameCoordByMinimap(detectionGame, map) || resolveGameCoord(detectionGame, map);
         if (!resolved || !resolved.coord) continue;
         const candidate = {
           dungeon,
