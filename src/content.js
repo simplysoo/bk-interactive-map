@@ -97,6 +97,8 @@
     lastBattleSeenAt: 0,
     lastRecoverySyncAt: 0,
     renderQueued: false,
+    mapRenderKey: '',
+    mapRenderRevision: 0,
     lastStatus: '',
     state: {
       dungeonId: DUNGEONS[0] ? DUNGEONS[0].id : '',
@@ -1958,10 +1960,14 @@
     if (mapWrapEl) mapWrapEl.classList.toggle('is-live', Boolean(map && map.source === 'live'));
 
     if (!map) {
+      runtime.mapRenderKey = '';
+      if (mapEl) {
+        mapEl.__bkpmMapRenderKey = '';
+      }
       mapEl.innerHTML = '<div class="bkpm-empty">Карта еще не загружена.</div>';
       drawerEl.classList.toggle('is-open', runtime.state.drawerOpen);
       drawerEl.classList.toggle('is-category', isCategoryDrawerView(runtime.state.drawerView));
-      setDrawerHtml(drawerEl, runtime.state.drawerOpen ? renderDrawer(null, guide) : '', getDrawerRenderKey(null));
+      updateDrawerHtml(drawerEl, null, guide);
       updateInfoTabs();
       updateStatusLine();
       return;
@@ -1972,9 +1978,6 @@
       markVisited(map, currentCoord);
       saveStateSoon();
     }
-    const routeSet = new Set(runtime.state.route || []);
-    const visitedSet = getVisitedSet(map);
-    const clearedMonsterSet = getClearedMonsterSet(map);
     const cellSize = Math.round(getAutoCellSize(map) * zoomValue);
     const cssSize = clamp(cellSize, CELL_SIZE_MIN, CELL_SIZE_MAX);
     mapEl.style.setProperty('--bkpm-cell', `${cssSize}px`);
@@ -1982,16 +1985,27 @@
     mapEl.style.gridTemplateColumns = `repeat(${map.maxCol}, var(--bkpm-cell))`;
     mapEl.style.gridTemplateRows = `repeat(${map.maxRow}, var(--bkpm-cell))`;
 
-    const cells = Array.from(map.cells.values()).sort((a, b) => a.row - b.row || a.col - b.col);
-    const cellsHtml = cells.map(cell => renderCell(cell, {
-      currentCoord,
-      routeSet,
-      visitedSet,
-      clearedMonsterSet
-    })).join('');
-    mapEl.innerHTML = cellsHtml + renderPlayerOverlay(map, currentCoord);
-    runtime.renderedMapKey = mapKey(map.dungeonId, map.floorId);
-    runtime.renderedCoord = currentCoord || '';
+    const nextMapRenderKey = getMapRenderKey(map, cssSize);
+    const hasRenderedCells = Boolean(mapEl.querySelector('.bkpm-cell[data-coord]'));
+    if (runtime.mapRenderKey !== nextMapRenderKey || mapEl.__bkpmMapRenderKey !== nextMapRenderKey || !hasRenderedCells) {
+      const routeSet = new Set(runtime.state.route || []);
+      const visitedSet = getVisitedSet(map);
+      const clearedMonsterSet = getClearedMonsterSet(map);
+      const cells = Array.from(map.cells.values()).sort((a, b) => a.row - b.row || a.col - b.col);
+      const cellsHtml = cells.map(cell => renderCell(cell, {
+        currentCoord,
+        routeSet,
+        visitedSet,
+        clearedMonsterSet
+      })).join('');
+      mapEl.innerHTML = cellsHtml + renderPlayerOverlay(map, currentCoord);
+      runtime.mapRenderKey = nextMapRenderKey;
+      mapEl.__bkpmMapRenderKey = nextMapRenderKey;
+      runtime.renderedMapKey = mapKey(map.dungeonId, map.floorId);
+      runtime.renderedCoord = currentCoord || '';
+    } else {
+      applyFastMapUpdate();
+    }
     const centerCoord = currentCoord || (!hasMinimapTiles(runtime.game) ? getStoredPlayerCoordForMap(map) : '') || getPrimaryDescentCoord(map) || map.startCoord;
     const centerKey = `${map.dungeonId}:${map.floorId}:${centerCoord}:${zoomValue}`;
     if (centerCoord && runtime.renderCenteredKey !== centerKey) {
@@ -2001,14 +2015,70 @@
 
     drawerEl.classList.toggle('is-open', runtime.state.drawerOpen);
     drawerEl.classList.toggle('is-category', isCategoryDrawerView(runtime.state.drawerView));
-    setDrawerHtml(drawerEl, runtime.state.drawerOpen ? renderDrawer(map, guide) : '', getDrawerRenderKey(map));
+    updateDrawerHtml(drawerEl, map, guide);
     updateInfoTabs();
     updateStatusLine();
   }
 
-  function getDrawerRenderKey(map) {
+  function getMapRenderKey(map, cssSize) {
+    if (!map) return 'no-map';
+    return [
+      mapKey(map.dungeonId, map.floorId),
+      map.source || '',
+      map.maxCol || '',
+      map.maxRow || '',
+      cssSize || '',
+      runtime.state.selectedCoord || '',
+      runtime.state.targetCoord || '',
+      runtime.state.routeBlocked ? 'blocked' : '',
+      Array.isArray(runtime.state.route) ? runtime.state.route.join(',') : '',
+      runtime.mapRenderRevision || 0
+    ].join('|');
+  }
+
+  function bumpMapRenderRevision() {
+    runtime.mapRenderRevision = (runtime.mapRenderRevision || 0) + 1;
+    runtime.mapRenderKey = '';
+  }
+
+  function updateDrawerHtml(drawerEl, map, guide) {
+    if (!drawerEl) return;
+    const key = getDrawerRenderKey(map, guide);
+    if (drawerEl.dataset.bkpmDrawerKey === key && drawerEl.__bkpmDrawerHtml !== undefined) return;
+    setDrawerHtml(drawerEl, runtime.state.drawerOpen ? renderDrawer(map, guide) : '', key);
+  }
+
+  function getDrawerRenderKey(map, guide) {
     const mapKeyPart = map ? `${map.dungeonId}:${map.floorId}` : 'no-map';
-    return `${mapKeyPart}:${runtime.state.drawerOpen ? 'open' : 'closed'}:${runtime.state.drawerView || 'cell'}`;
+    if (!runtime.state.drawerOpen) return `${mapKeyPart}:closed`;
+    const view = runtime.state.drawerView || 'cell';
+    const parts = [
+      mapKeyPart,
+      'open',
+      view,
+      runtime.cacheStamp || 0,
+      runtime.state.selectedCoord || '',
+      runtime.state.targetCoord || '',
+      runtime.state.routeBlocked ? 'blocked' : '',
+      Array.isArray(runtime.state.route) ? runtime.state.route.join(',') : '',
+      Array.isArray(guide) ? guide.length : 0
+    ];
+    if (view === 'loot') {
+      parts.push(
+        Object.keys(runtime.state.lootStats || {}).length,
+        (runtime.state.lootEvents || []).length
+      );
+    }
+    if (isCategoryDrawerView(view)) {
+      const limitKey = getCategoryListLimitKey(view);
+      parts.push(
+        getCategoryFilter(view),
+        runtime.categoryListLimits[limitKey] || CATEGORY_LIST_INITIAL,
+        map ? getClearedMonsterSet(map).size : 0,
+        runtime.mapRenderRevision || 0
+      );
+    }
+    return parts.join('|');
   }
 
   function setDrawerHtml(drawerEl, html, key) {
@@ -3231,7 +3301,7 @@
   }
 
   function canFastMapUpdate(map) {
-    if (!map || !runtime.root || runtime.state.drawerOpen || runtime.state.targetCoord || runtime.state.route.length) return false;
+    if (!map || !runtime.root || runtime.state.targetCoord || runtime.state.route.length) return false;
     if (runtime.renderedMapKey !== mapKey(map.dungeonId, map.floorId)) return false;
     const mapEl = runtime.root.querySelector('[data-role="map"]');
     return Boolean(mapEl && mapEl.querySelector('.bkpm-cell[data-coord]'));
@@ -5515,6 +5585,7 @@
     runtime.state.routeBlocked = false;
     runtime.state.selectedCoord = '';
     runtime.cellMetaCache.clear();
+    bumpMapRenderRevision();
   }
 
   function getClearedMonsterSet(map) {
