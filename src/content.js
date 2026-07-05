@@ -3594,6 +3594,14 @@
     runtime.autoMapDetect.lockedKey = '';
   }
 
+  function isUserMapPanelActive() {
+    return Boolean(
+      runtime.state.drawerOpen ||
+      runtime.state.targetCoord ||
+      (Array.isArray(runtime.state.route) && runtime.state.route.length)
+    );
+  }
+
   function scheduleAutoMapDetect(game, dungeons, currentMap) {
     const candidates = normalizeAutoMapDungeons(dungeons);
     if (!shouldScheduleAutoMapDetect(game, candidates, currentMap)) return false;
@@ -3629,13 +3637,16 @@
   function shouldScheduleAutoMapDetect(game, dungeons, currentMap) {
     if (!game || !Array.isArray(dungeons) || !dungeons.length) return false;
     if (!hasMinimapTiles(game)) return false;
+    if (isUserMapPanelActive()) return false;
     const currentDungeon = getCurrentDungeon();
     const currentFloor = getCurrentFloor();
     const currentKey = currentDungeon && currentFloor ? mapKey(currentDungeon.id, currentFloor.id) : '';
     const lockedKey = runtime.autoMapDetect && runtime.autoMapDetect.lockedKey;
     const currentIsCandidate = Boolean(currentDungeon && dungeons.some(dungeon => dungeon.id === currentDungeon.id));
     if (dungeons.length > 1) {
-      return true;
+      if (!currentIsCandidate) return true;
+      if (!currentMap || !runtime.playerMapCoord || !currentMap.cells || !currentMap.cells.has(runtime.playerMapCoord)) return true;
+      return game.syncMode === 'search';
     }
     const dungeon = dungeons[0];
     if (!dungeon || !Array.isArray(dungeon.floors) || dungeon.floors.length < 1) return false;
@@ -3901,6 +3912,10 @@
     const key = mapKey(dungeon.id, floor.id);
     const currentKey = getCurrentMapKey();
     const changedFloor = currentKey !== key || runtime.state.dungeonId !== dungeon.id || runtime.state.floorId !== floor.id;
+    if (!changedFloor && runtime.playerMapCoord === resolved.coord && runtime.mapByKey.has(key)) {
+      if (runtime.autoMapDetect) runtime.autoMapDetect.lockedKey = key;
+      return false;
+    }
     runtime.state.dungeonId = dungeon.id;
     runtime.state.floorId = floor.id;
     runtime.mapByKey.set(key, map);
