@@ -203,7 +203,8 @@
 
   function post(force, includeMatrix) {
     const now = Date.now();
-    const withMatrix = Boolean(includeMatrix && now - lastMatrixAt > 5000);
+    const matrixInterval = force ? 300 : 5000;
+    const withMatrix = Boolean(includeMatrix && now - lastMatrixAt > matrixInterval);
     if (withMatrix) lastMatrixAt = now;
     const data = captureBest(withMatrix);
     if (data) data.capturedAt = now;

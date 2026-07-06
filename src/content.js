@@ -76,6 +76,7 @@
     bridgeData: null,
     bridgeAt: 0,
     lastBridgeRequestAt: 0,
+    lastBridgeMatrixRequestAt: 0,
     lastObserverBind: 0,
     contextCache: null,
     optimisticMove: null,
@@ -268,13 +269,22 @@
 
   function requestBridgeState(includeMatrix) {
     const now = Date.now();
-    if (!includeMatrix && now - runtime.lastBridgeRequestAt < 90) return;
+    const wantMatrix = Boolean(includeMatrix);
+    if (!wantMatrix && now - runtime.lastBridgeRequestAt < 90) return;
+    if (wantMatrix && now - runtime.lastBridgeMatrixRequestAt < 250) return;
     runtime.lastBridgeRequestAt = now;
+    if (wantMatrix) runtime.lastBridgeMatrixRequestAt = now;
     window.postMessage({
       source: 'BKPM_CONTENT',
       type: 'request-state',
-      includeMatrix: Boolean(includeMatrix)
+      includeMatrix: wantMatrix
     }, '*');
+  }
+
+  function clearBridgeCache() {
+    runtime.bridgeData = null;
+    runtime.bridgeAt = 0;
+    runtime.contextCache = null;
   }
 
   function handleGameRecoveryClick(event) {
@@ -382,6 +392,8 @@
     runtime.gameMinimapDocs.add(minimap);
     const observer = new MutationObserver(() => {
       if (!runtime.state.visible) return;
+      clearBridgeCache();
+      requestBridgeState(isCurrentDynamicFloor());
       scheduleGameSync('minimap', false);
     });
     observer.observe(minimap, {
@@ -421,7 +433,7 @@
     if (!shouldTrackDungeonKey(event, token)) return;
     prepareDungeonKeyMove(token);
     scheduleGameSync(event.repeat ? 'key-repeat' : 'key', true);
-    requestBridgeState(false);
+    requestBridgeState(isCurrentDynamicFloor());
   }
 
   function shouldTrackDungeonKey(event, token) {
@@ -479,7 +491,7 @@
       if (token === 'rr' || token === 'rl') applyDungeonPathToken(token, { allowWallFallback: false });
     }
     scheduleGameSync('click', true);
-    requestBridgeState(false);
+    requestBridgeState(isCurrentDynamicFloor());
   }
 
   function extractDungeonPathToken(element) {
@@ -4699,7 +4711,8 @@
       runtime.pendingMove = null;
       runtime.optimisticMove = null;
     }
-    if (!battleActive && runtime.bridgeData && Date.now() - runtime.bridgeAt < 6000) {
+    const bridgeTtl = isCurrentDynamicFloor() ? 500 : 6000;
+    if (!battleActive && runtime.bridgeData && Date.now() - runtime.bridgeAt < bridgeTtl) {
       const context = {
         win: window,
         doc: document,
