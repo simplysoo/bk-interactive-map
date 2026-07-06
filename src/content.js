@@ -317,7 +317,7 @@
     scheduleRecoverySync.timer = setTimeout(() => {
       runtime.contextCache = null;
       bindGameObservers();
-      requestBridgeState(true);
+      requestBridgeState(isCurrentVpkDynamicFloor());
       renderSyncResult(syncGameState());
     }, 900);
   }
@@ -393,7 +393,7 @@
     const observer = new MutationObserver(() => {
       if (!runtime.state.visible) return;
       clearBridgeCache();
-      requestBridgeState(isCurrentDynamicFloor());
+      requestBridgeState(isCurrentVpkDynamicFloor());
       scheduleGameSync('minimap', false);
     });
     observer.observe(minimap, {
@@ -433,7 +433,7 @@
     if (!shouldTrackDungeonKey(event, token)) return;
     prepareDungeonKeyMove(token);
     scheduleGameSync(event.repeat ? 'key-repeat' : 'key', true);
-    requestBridgeState(isCurrentDynamicFloor());
+    requestBridgeState(isCurrentVpkDynamicFloor());
   }
 
   function shouldTrackDungeonKey(event, token) {
@@ -491,7 +491,7 @@
       if (token === 'rr' || token === 'rl') applyDungeonPathToken(token, { allowWallFallback: false });
     }
     scheduleGameSync('click', true);
-    requestBridgeState(isCurrentDynamicFloor());
+    requestBridgeState(isCurrentVpkDynamicFloor());
   }
 
   function extractDungeonPathToken(element) {
@@ -637,7 +637,7 @@
     if (!side || (!ignoreWalls && cell.walls && cell.walls[side])) return '';
     const delta = sideDelta(side);
     let target = '';
-    if (map.source === 'live' || Number.isFinite(cell.gameX)) {
+    if (isVpkLiveMap(map)) {
       target = liveCoordKey(cell.gameX + delta.dx, cell.gameY + delta.dy);
     } else {
       target = coordFromGrid(cell.col + delta.dx, cell.row + delta.dy);
@@ -652,7 +652,7 @@
   function getDeltaTargetCoord(map, coord, dx, dy) {
     const cell = map && map.cells ? map.cells.get(coord) : null;
     if (!cell || !Number.isFinite(dx) || !Number.isFinite(dy)) return '';
-    if (map.source === 'live' || Number.isFinite(cell.gameX)) {
+    if (isVpkLiveMap(map)) {
       if (!Number.isFinite(cell.gameX) || !Number.isFinite(cell.gameY)) return '';
       return liveCoordKey(cell.gameX + dx, cell.gameY + dy);
     }
@@ -3815,9 +3815,8 @@
     const dungeon = dungeons[0];
     if (!dungeon || !Array.isArray(dungeon.floors) || dungeon.floors.length < 1) return false;
     if (!currentIsCandidate) return true;
-    if (Number.isFinite(game.floorNumber)) {
-      const expectedFloor = findFloorByGameNumber(dungeon, game.floorNumber);
-      if (!expectedFloor) return true;
+    const expectedFloor = findFloorByGame(dungeon, game);
+    if (expectedFloor) {
       const expectedKey = mapKey(dungeon.id, expectedFloor.id);
       return currentKey !== expectedKey || !currentMap || !runtime.playerMapCoord || game.syncMode === 'search';
     }
@@ -3869,7 +3868,7 @@
 
   async function switchToDetectedDungeonFloor(game, dungeon) {
     if (!game || !dungeon || !isDungeonCompatibleWithEnvironment(dungeon, game.environment)) return null;
-    const floor = findFloorByGameNumber(dungeon, game.floorNumber) ||
+    const floor = findFloorByGame(dungeon, game) ||
       (dungeon.floors && dungeon.floors[0] ? dungeon.floors[0] : null);
     if (!floor) return null;
     const key = mapKey(dungeon.id, floor.id);
@@ -4045,6 +4044,8 @@
     if (!dungeon || !Array.isArray(dungeon.floors)) return [];
     const staticFloors = dungeon.floors.filter(floor => !isDynamicFloor(floor));
     if (!staticFloors.length) return [];
+    const textFloor = findFloorByGameText(dungeon, game);
+    if (textFloor && !isDynamicFloor(textFloor)) return [textFloor];
     if (Number.isFinite(game && game.floorNumber)) {
       const floor = findFloorByGameNumber(dungeon, game.floorNumber);
       return floor && !isDynamicFloor(floor) ? [floor] : staticFloors.slice();
@@ -4377,7 +4378,7 @@
         ? { coord: game.coord, mode: 'raw', score: 0, matches: 0 }
         : null;
     }
-    if (map.source === 'live') {
+    if (isVpkLiveMap(map)) {
       const coord = liveCoordKey(game.x, game.y);
       if (!map.cells.has(coord)) return null;
       return {
@@ -4575,7 +4576,7 @@
     if (matchedDungeon && matchedDungeon.id !== runtime.state.dungeonId) {
       resetAutoMapDetect();
       runtime.state.dungeonId = matchedDungeon.id;
-      const matchedFloor = findFloorByGameNumber(matchedDungeon, game.floorNumber);
+      const matchedFloor = findFloorByGame(matchedDungeon, game);
       runtime.state.floorId = matchedFloor ? matchedFloor.id : (matchedDungeon.floors[0] ? matchedDungeon.floors[0].id : runtime.state.floorId);
       runtime.playerMapCoord = '';
       runtime.pendingMove = null;
@@ -4590,8 +4591,8 @@
     }
 
     const dungeon = getCurrentDungeon();
-    if (dungeon && Number.isFinite(game.floorNumber)) {
-      const floor = findFloorByGameNumber(dungeon, game.floorNumber);
+    if (dungeon) {
+      const floor = findFloorByGame(dungeon, game);
       if (floor && floor.id !== runtime.state.floorId) {
         resetAutoMapDetect();
         runtime.state.floorId = floor.id;
@@ -4621,7 +4622,7 @@
       const optimistic = runtime.optimisticMove && runtime.optimisticMove.until > Date.now()
         ? runtime.optimisticMove
         : null;
-      const liveResolved = map.source === 'live' ? resolveGameCoord(game, map) : null;
+      const liveResolved = isVpkLiveMap(map) ? resolveGameCoord(game, map) : null;
       const pendingConfirmed = (!liveResolved || shouldPreferPendingOverLive(liveResolved, map))
         ? resolvePendingConfirmedMove(game, map)
         : null;
@@ -4717,7 +4718,7 @@
         }
         if (recoveredFromBattle) {
           runtime.lastBattleSeenAt = 0;
-          requestBridgeState(true);
+          requestBridgeState(isCurrentVpkDynamicFloor());
         }
       }
     }
@@ -4735,7 +4736,7 @@
       runtime.pendingMove = null;
       runtime.optimisticMove = null;
     }
-    const bridgeTtl = isCurrentDynamicFloor() ? 500 : 6000;
+    const bridgeTtl = isCurrentVpkDynamicFloor() ? 500 : 6000;
     if (!battleActive && runtime.bridgeData && Date.now() - runtime.bridgeAt < bridgeTtl) {
       const context = {
         win: window,
@@ -5168,10 +5169,46 @@
     return isDynamicFloor(getCurrentFloor());
   }
 
+  function isCurrentVpkDynamicFloor() {
+    const dungeon = getCurrentDungeon();
+    return Boolean(dungeon && dungeon.id === 'vpk' && isDynamicFloor(getCurrentFloor()));
+  }
+
+  function isVpkLiveMap(map) {
+    return Boolean(map && map.dungeonId === 'vpk' && map.source === 'live');
+  }
+
+  function findFloorByGame(dungeon, game) {
+    return findFloorByGameText(dungeon, game) ||
+      findFloorByGameNumber(dungeon, game && game.floorNumber);
+  }
+
+  function findFloorByGameText(dungeon, game) {
+    if (!dungeon || !Array.isArray(dungeon.floors) || !game) return null;
+    const haystack = normalizeName([
+      game.room || '',
+      game.href || ''
+    ].join(' '));
+    if (!haystack) return null;
+    for (const floor of dungeon.floors) {
+      const aliases = floor && Array.isArray(floor.roomAliases) ? floor.roomAliases : [];
+      for (const alias of aliases) {
+        const value = normalizeName(alias);
+        if (value && haystack.includes(value)) return floor;
+      }
+    }
+    if (dungeon.id === 'gribnica' && haystack.includes('заброшенные тоннели')) {
+      return dungeon.floors.find(floor => floor && floor.id === 'stage_4') || null;
+    }
+    return null;
+  }
+
   function findFloorByGameNumber(dungeon, floorNumber) {
     const number = Number(floorNumber);
     if (!dungeon || !Array.isArray(dungeon.floors) || !Number.isFinite(number)) return null;
     return dungeon.floors.find(floor => {
+      const gameNumbers = Array.isArray(floor && floor.gameNumbers) ? floor.gameNumbers.map(Number) : [];
+      if (gameNumbers.includes(number)) return true;
       const titleNumber = extractFloorNumberFromText(floor && floor.title);
       return titleNumber === number;
     }) || null;
@@ -5658,7 +5695,7 @@
     const cell = map.cells.get(coord);
     if (!cell) return [];
     const special = getRouteSpecialLinks(map).get(coord);
-    if (map.source === 'live' || Number.isFinite(cell.gameX)) {
+    if (isVpkLiveMap(map)) {
       const result = [
         ['n', cell.gameX, cell.gameY - 1, 's'],
         ['e', cell.gameX + 1, cell.gameY, 'w'],
@@ -5746,7 +5783,7 @@
   }
 
   function ensureDynamicLiveMap(game, force) {
-    if (!isCurrentDynamicFloor()) return false;
+    if (!isCurrentVpkDynamicFloor()) return false;
     if (!game || !Array.isArray(game.matrix) || !game.matrix.length) return false;
     const dungeon = getCurrentDungeon();
     const floor = getCurrentFloor();
@@ -5886,7 +5923,7 @@
     if (!game || !map || !Number.isFinite(game.x) || !Number.isFinite(game.y)) {
       return game && game.coord ? { coord: game.coord, mode: 'raw', score: 0, matches: 0 } : null;
     }
-    if (map.source === 'live') {
+    if (isVpkLiveMap(map)) {
       return { coord: liveCoordKey(game.x, game.y), mode: 'live', score: game.matrix ? game.matrix.length : 1, matches: game.matrix ? game.matrix.length : 1 };
     }
     if (game.coordSource === 'minimap') return null;

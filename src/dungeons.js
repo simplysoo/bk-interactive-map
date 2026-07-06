@@ -30,7 +30,12 @@ window.BK_PALADINS_DUNGEONS = [
       },
       {
         id: 'stage_4',
-        title: '4 этаж',
+        title: 'Заброшенные тоннели',
+        gameNumbers: [4],
+        roomAliases: [
+          'Грибница - Этаж 1 - Заброшенные тоннели',
+          'Заброшенные тоннели'
+        ],
         url: 'https://lib.paladins.ru/dungeons/gribnica/maps/stage_4/'
       }
     ],
