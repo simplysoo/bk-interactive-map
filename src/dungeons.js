@@ -734,5 +734,85 @@ window.BK_PALADINS_DUNGEONS = [
         url: 'https://lib.paladins.ru/dungeons/abode/guide/objects/'
       }
     ]
+  },
+  {
+    id: 'vpk',
+    title: 'Владения Проклятого Клана',
+    aliases: [
+      'Владения Проклятого Клана',
+      'Владениях Проклятого Клана',
+      'Владения Проклятого',
+      'Проклятого Клана',
+      'ВПК',
+      'vpk'
+    ],
+    urlAliases: [
+      'dungeons/vpk/',
+      'vpk'
+    ],
+    floors: [
+      {
+        id: 'dynamic',
+        title: 'Живая карта',
+        dynamic: true,
+        source: 'live'
+      }
+    ],
+    guides: [
+      {
+        id: 'intro',
+        type: 'intro',
+        title: 'Общая информация',
+        url: 'https://lib.paladins.ru/dungeons/vpk/guide/'
+      },
+      {
+        id: 'clanbot',
+        type: 'npc',
+        title: 'Клановые боты',
+        url: 'https://lib.paladins.ru/dungeons/vpk/guide/clanbot/'
+      },
+      {
+        id: 'reputation_clan',
+        type: 'intro',
+        title: 'Репутация Проклятого Клана',
+        url: 'https://lib.paladins.ru/dungeons/vpk/guide/reputation_gen_clan/'
+      },
+      {
+        id: 'reputation_hunter',
+        type: 'intro',
+        title: 'Репутация Охотника',
+        url: 'https://lib.paladins.ru/dungeons/vpk/guide/reputation_gen_hunter/'
+      },
+      {
+        id: 'reputation_alch',
+        type: 'intro',
+        title: 'Репутация Создателя Зелий',
+        url: 'https://lib.paladins.ru/dungeons/vpk/guide/reputation_gen_alch/'
+      },
+      {
+        id: 'altar',
+        type: 'object',
+        title: 'Алтарь слияния нитей',
+        url: 'https://lib.paladins.ru/dungeons/vpk/guide/altar_merge_thread/'
+      },
+      {
+        id: 'monsters',
+        type: 'monster',
+        title: 'Боевые боты',
+        url: 'https://lib.paladins.ru/dungeons/vpk/guide/monsters/'
+      },
+      {
+        id: 'chests',
+        type: 'object',
+        title: 'Сундуки',
+        url: 'https://lib.paladins.ru/dungeons/vpk/guide/chests/'
+      },
+      {
+        id: 'logs',
+        type: 'object',
+        title: 'Логи походов',
+        url: 'https://lib.paladins.ru/dungeons/vpk/guide/logs/'
+      }
+    ]
   }
 ];

@@ -66,6 +66,7 @@
     pendingLoads: new Map(),
     pendingGuideLoads: new Map(),
     preloadMapPromises: new Map(),
+    liveMapSignature: '',
     coordCalibration: {},
     minimapCalibration: {},
     gameClickDocs: new WeakSet(),
@@ -1405,6 +1406,7 @@
   }
 
   async function loadPreloadedMap(dungeon, floor) {
+    if (!dungeon || !floor || isDynamicFloor(floor)) return null;
     const file = `data/maps/${preloadMapFileName(dungeon.id, floor.id)}`;
     if (runtime.preloadMapPromises.has(file)) return runtime.preloadMapPromises.get(file);
     const fileUrl = safeRuntimeUrl(file);
@@ -1469,6 +1471,14 @@
     if (runtime.pendingLoads.has(key)) return runtime.pendingLoads.get(key);
 
     setStatus(`Открываю ${dungeon.title}, ${floor.title}`);
+    if (isDynamicFloor(floor)) {
+      const game = runtime.game || detectGameState();
+      if (ensureDynamicLiveMap(game, true)) {
+        return runtime.mapByKey.get(key) || runtime.liveMap || null;
+      }
+      setStatus(`Живая карта ${dungeon.title}: жду данные миникарты`);
+      return null;
+    }
     const promise = loadPreloadedMap(dungeon, floor)
       .then(async preloaded => {
         let loaded = preloaded;
@@ -3768,6 +3778,7 @@
     if (!game || !Array.isArray(dungeons) || !dungeons.length) return false;
     if (!hasMinimapTiles(game)) return false;
     if (isUserMapPanelActive()) return false;
+    if (!dungeons.some(dungeon => (dungeon.floors || []).some(floor => !isDynamicFloor(floor)))) return false;
     const currentDungeon = getCurrentDungeon();
     const currentFloor = getCurrentFloor();
     const currentKey = currentDungeon && currentFloor ? mapKey(currentDungeon.id, currentFloor.id) : '';
@@ -3845,9 +3856,17 @@
     runtime.pendingMove = null;
     runtime.optimisticMove = null;
     runtime.liveMap = null;
+    runtime.liveMapSignature = '';
     runtime.playerMapCoord = '';
     runtime.lastCenteredCoord = '';
-    let map = runtime.mapByKey.get(key) || await loadPreloadedMap(dungeon, floor);
+    let map = runtime.mapByKey.get(key);
+    if (!map && isDynamicFloor(floor)) {
+      ensureDynamicLiveMap(game, true);
+      map = runtime.mapByKey.get(key) || runtime.liveMap || null;
+    }
+    if (!map) {
+      map = await loadPreloadedMap(dungeon, floor);
+    }
     if (map) {
       runtime.mapByKey.set(key, map);
       pruneMapCacheToCurrent();
@@ -4001,19 +4020,21 @@
 
   function getAutoMapDetectFloors(dungeon, game) {
     if (!dungeon || !Array.isArray(dungeon.floors)) return [];
+    const staticFloors = dungeon.floors.filter(floor => !isDynamicFloor(floor));
+    if (!staticFloors.length) return [];
     if (Number.isFinite(game && game.floorNumber)) {
       const floor = findFloorByGameNumber(dungeon, game.floorNumber);
-      return floor ? [floor] : dungeon.floors.slice();
+      return floor && !isDynamicFloor(floor) ? [floor] : staticFloors.slice();
     }
     const currentFloor = getCurrentFloor();
     const result = [];
     const matchingCurrentFloor = currentFloor
-      ? dungeon.floors.find(floor => floor && floor.id === currentFloor.id)
+      ? staticFloors.find(floor => floor && floor.id === currentFloor.id)
       : null;
     if (matchingCurrentFloor) {
       result.push(matchingCurrentFloor);
     }
-    for (const floor of dungeon.floors) {
+    for (const floor of staticFloors) {
       if (!floor || result.some(item => item.id === floor.id)) continue;
       result.push(floor);
     }
@@ -4055,6 +4076,7 @@
     runtime.pendingMove = null;
     runtime.optimisticMove = null;
     runtime.liveMap = null;
+    runtime.liveMapSignature = '';
     runtime.playerMapCoord = resolved.coord;
     const direction = (runtime.game && runtime.game.direction) ||
       (runtime.state.lastPlayer && runtime.state.lastPlayer.direction) ||
@@ -4486,6 +4508,7 @@
       }
       runtime.gameSignature = '';
       runtime.liveMap = null;
+      runtime.liveMapSignature = '';
       runtime.playerMapCoord = '';
       return previousSignature !== '';
     }
@@ -4523,6 +4546,8 @@
       runtime.playerMapCoord = '';
       runtime.pendingMove = null;
       runtime.optimisticMove = null;
+      runtime.liveMap = null;
+      runtime.liveMapSignature = '';
       runtime.lastCenteredCoord = '';
       updateDungeonControls();
       scheduleMapLoad(false);
@@ -4539,6 +4564,8 @@
         runtime.playerMapCoord = '';
         runtime.pendingMove = null;
         runtime.optimisticMove = null;
+        runtime.liveMap = null;
+        runtime.liveMapSignature = '';
         runtime.lastCenteredCoord = '';
         updateDungeonControls();
         scheduleMapLoad(false);
@@ -4548,6 +4575,11 @@
       if (floor && runtime.autoMapDetect) {
         runtime.autoMapDetect.lockedKey = mapKey(dungeon.id, floor.id);
       }
+    }
+
+    if (ensureDynamicLiveMap(game, false)) {
+      changed = true;
+      fullRenderNeeded = true;
     }
 
     const map = getCurrentMap();
@@ -5082,6 +5114,14 @@
     return dungeon ? dungeon.floors.find(floor => floor.id === runtime.state.floorId) || dungeon.floors[0] : null;
   }
 
+  function isDynamicFloor(floor) {
+    return Boolean(floor && (floor.dynamic || floor.source === 'live'));
+  }
+
+  function isCurrentDynamicFloor() {
+    return isDynamicFloor(getCurrentFloor());
+  }
+
   function findFloorByGameNumber(dungeon, floorNumber) {
     const number = Number(floorNumber);
     if (!dungeon || !Array.isArray(dungeon.floors) || !Number.isFinite(number)) return null;
@@ -5095,7 +5135,11 @@
     const dungeon = getCurrentDungeon();
     const floor = getCurrentFloor();
     if (!dungeon || !floor) return null;
-    return runtime.mapByKey.get(mapKey(dungeon.id, floor.id)) || null;
+    const key = mapKey(dungeon.id, floor.id);
+    const cached = runtime.mapByKey.get(key);
+    if (cached) return cached;
+    if (runtime.liveMap && runtime.liveMap.dungeonId === dungeon.id && runtime.liveMap.floorId === floor.id) return runtime.liveMap;
+    return null;
   }
 
   function getCurrentMapKey() {
@@ -5655,6 +5699,50 @@
     return result;
   }
 
+  function ensureDynamicLiveMap(game, force) {
+    if (!isCurrentDynamicFloor()) return false;
+    if (!game || !Array.isArray(game.matrix) || !game.matrix.length) return false;
+    const dungeon = getCurrentDungeon();
+    const floor = getCurrentFloor();
+    if (!dungeon || !floor) return false;
+    const signature = getDynamicMapSignature(game);
+    const key = mapKey(dungeon.id, floor.id);
+    if (!force && signature && signature === runtime.liveMapSignature && runtime.mapByKey.has(key)) return false;
+    const map = buildLiveMap(game);
+    runtime.liveMap = map;
+    runtime.liveMapSignature = signature;
+    runtime.mapByKey.set(key, map);
+    pruneMapCacheToCurrent();
+    invalidateCellCaches();
+    bumpMapRenderRevision();
+    return true;
+  }
+
+  function getDynamicMapSignature(game) {
+    const matrix = Array.isArray(game && game.matrix) ? game.matrix : [];
+    if (!matrix.length) return '';
+    return matrix
+      .map(cell => {
+        const objects = Array.isArray(cell.objects) ? cell.objects.join(',') : '';
+        const users = Array.isArray(cell.users) ? cell.users.join(',') : '';
+        const walls = cell.walls || {};
+        return [
+          cell.x,
+          cell.y,
+          walls.n ? 1 : 0,
+          walls.e ? 1 : 0,
+          walls.s ? 1 : 0,
+          walls.w ? 1 : 0,
+          cell.path || '',
+          cell.name || '',
+          objects,
+          users
+        ].join(':');
+      })
+      .sort()
+      .join('|');
+  }
+
   function buildLiveMap(game) {
     const dungeon = getCurrentDungeon();
     const floor = getCurrentFloor();
@@ -5698,6 +5786,10 @@
       maxRow = Math.max(maxRow, row);
     }
 
+    const startCoord = Number.isFinite(game.x) && Number.isFinite(game.y)
+      ? liveCoordKey(game.x, game.y)
+      : (cells.keys().next().value || '');
+
     return {
       dungeonId: dungeon ? dungeon.id : runtime.state.dungeonId,
       dungeonTitle: dungeon ? dungeon.title : 'Грибница',
@@ -5708,7 +5800,7 @@
       cells,
       maxCol,
       maxRow,
-      startCoord: liveCoordKey(game.x, game.y),
+      startCoord,
       loadedAt: new Date().toISOString()
     };
   }

@@ -243,6 +243,7 @@ function mapFileName(dungeon, floor) {
 }
 
 function shouldBuildFloor(dungeon, floor) {
+  if (!floor || floor.dynamic || floor.source === 'live' || !floor.url) return false;
   if (!requestedTargets.size) return true;
   const dungeonId = String(dungeon && dungeon.id || '').toLowerCase();
   const floorId = String(floor && floor.id || '').toLowerCase();
