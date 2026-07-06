@@ -4587,7 +4587,8 @@
       const optimistic = runtime.optimisticMove && runtime.optimisticMove.until > Date.now()
         ? runtime.optimisticMove
         : null;
-      const pendingConfirmed = resolvePendingConfirmedMove(game, map);
+      const liveResolved = map.source === 'live' ? resolveGameCoord(game, map) : null;
+      const pendingConfirmed = liveResolved ? null : resolvePendingConfirmedMove(game, map);
       if (pendingConfirmed && pendingConfirmed.coord) {
         game.coord = pendingConfirmed.coord;
         runtime.playerMapCoord = pendingConfirmed.coord;
@@ -4595,6 +4596,14 @@
         game.syncMode = pendingConfirmed.mode;
         game.syncScore = pendingConfirmed.score;
         game.syncMatches = pendingConfirmed.matches;
+      } else if (liveResolved && liveResolved.coord && map.cells.has(liveResolved.coord)) {
+        game.coord = liveResolved.coord;
+        runtime.playerMapCoord = liveResolved.coord;
+        game.syncMode = liveResolved.mode;
+        game.syncScore = liveResolved.score;
+        game.syncMatches = liveResolved.matches;
+        runtime.optimisticMove = null;
+        runtime.pendingMove = null;
       } else if (optimistic && map.cells.has(optimistic.coord)) {
         const resolvedOptimistic = resolveOptimisticMove(game, map, optimistic);
         game.coord = resolvedOptimistic.coord;
@@ -5789,6 +5798,29 @@
     const startCoord = Number.isFinite(game.x) && Number.isFinite(game.y)
       ? liveCoordKey(game.x, game.y)
       : (cells.keys().next().value || '');
+    if (startCoord && !cells.has(startCoord) && Number.isFinite(game.x) && Number.isFinite(game.y)) {
+      const col = Math.max(1, game.x - minX + 1);
+      const row = Math.max(1, game.y - minY + 1);
+      cells.set(startCoord, {
+        coord: startCoord,
+        label: `${game.x},${game.y}`,
+        col,
+        row,
+        gameX: game.x,
+        gameY: game.y,
+        className: 'live current',
+        walls: { n: false, e: false, s: false, w: false },
+        names: [],
+        roomName: game.room || '',
+        path: '',
+        dropItems: [],
+        image: '',
+        kind: 'room',
+        html: ''
+      });
+      maxCol = Math.max(maxCol, col);
+      maxRow = Math.max(maxRow, row);
+    }
 
     return {
       dungeonId: dungeon ? dungeon.id : runtime.state.dungeonId,
