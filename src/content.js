@@ -649,6 +649,17 @@
     return target;
   }
 
+  function getDeltaTargetCoord(map, coord, dx, dy) {
+    const cell = map && map.cells ? map.cells.get(coord) : null;
+    if (!cell || !Number.isFinite(dx) || !Number.isFinite(dy)) return '';
+    if (map.source === 'live' || Number.isFinite(cell.gameX)) {
+      if (!Number.isFinite(cell.gameX) || !Number.isFinite(cell.gameY)) return '';
+      return liveCoordKey(cell.gameX + dx, cell.gameY + dy);
+    }
+    if (!Number.isFinite(cell.col) || !Number.isFinite(cell.row)) return '';
+    return coordFromGrid(cell.col + dx, cell.row + dy);
+  }
+
   function sideForMoveToken(token, direction) {
     const front = sideForDirection(direction);
     if (!front) return '';
@@ -4267,16 +4278,14 @@
     let matches = 0;
     const patternDelta = currentMinimap && pending.minimap ? getMinimapPatternDelta(currentMinimap, pending.minimap) : null;
     if (patternDelta) {
-      const cell = map.cells.get(currentCoord);
-      target = cell ? coordFromGrid(cell.col + patternDelta.dx, cell.row + patternDelta.dy) : '';
+      target = getDeltaTargetCoord(map, currentCoord, patternDelta.dx, patternDelta.dy);
       mode = 'minimap-confirmed';
       score = 1200 + patternDelta.score;
       matches = patternDelta.matches;
     }
 
     if ((!target || !map.cells.has(target)) && rawDelta && Math.abs(rawDelta.dx) + Math.abs(rawDelta.dy) === 1) {
-      const cell = map.cells.get(currentCoord);
-      target = cell ? coordFromGrid(cell.col + rawDelta.dx, cell.row + rawDelta.dy) : '';
+      target = getDeltaTargetCoord(map, currentCoord, rawDelta.dx, rawDelta.dy);
       mode = 'raw-confirmed';
       score = 1000;
       matches = 1;
@@ -4347,6 +4356,19 @@
       score: 1000,
       matches: 1
     };
+  }
+
+  function shouldPreferPendingOverLive(liveResolved, map) {
+    if (!liveResolved || !liveResolved.coord || !map || map.source !== 'live') return false;
+    const pending = runtime.pendingMove;
+    if (!pending || !pending.token) return false;
+    const age = Date.now() - (pending.at || Date.now());
+    if (age > 2200) return false;
+    const currentCoord = pending.coord && map.cells.has(pending.coord)
+      ? pending.coord
+      : (runtime.playerMapCoord && map.cells.has(runtime.playerMapCoord) ? runtime.playerMapCoord : '');
+    if (!currentCoord || liveResolved.coord !== currentCoord) return false;
+    return /^m[1357]$|^r[lr]$/.test(pending.token);
   }
 
   function resolveGameCoordCheap(game, map) {
@@ -4600,7 +4622,9 @@
         ? runtime.optimisticMove
         : null;
       const liveResolved = map.source === 'live' ? resolveGameCoord(game, map) : null;
-      const pendingConfirmed = liveResolved ? null : resolvePendingConfirmedMove(game, map);
+      const pendingConfirmed = (!liveResolved || shouldPreferPendingOverLive(liveResolved, map))
+        ? resolvePendingConfirmedMove(game, map)
+        : null;
       if (pendingConfirmed && pendingConfirmed.coord) {
         game.coord = pendingConfirmed.coord;
         runtime.playerMapCoord = pendingConfirmed.coord;
