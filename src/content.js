@@ -2157,7 +2157,7 @@
     if (view === 'loot') {
       parts.push(
         Object.keys(runtime.state.lootStats || {}).length,
-        (runtime.state.lootEvents || []).length
+        (runtime.state.lootEvents || []).map(event => `${event.at}:${event.name}`).join('|')
       );
     }
     if (isCategoryDrawerView(view)) {
@@ -2358,6 +2358,13 @@
   function escapeRegExp(value) {
     return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
+
+  setInterval(() => {
+    if (runtime.extensionContextInvalid) return;
+    if (collectLootFromChat({ limit: 180 }) && runtime.state.visible && runtime.state.drawerView === 'loot') {
+      queueRender();
+    }
+  }, 1000);
 
   function collectLootFromChat(options) {
     const settings = Object.assign({ limit: 120, force: false }, options || {});
