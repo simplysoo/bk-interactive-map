@@ -62,7 +62,7 @@ function injectContent(tabId, done) {
     chrome.runtime.lastError;
     chrome.scripting.executeScript({
       target: { tabId },
-      files: ['src/dungeons.js', 'src/content.js']
+      files: ['src/dungeons.js', 'src/paladins-images.js', 'src/content.js']
     }, () => {
       chrome.runtime.lastError;
       if (typeof done === 'function') done();

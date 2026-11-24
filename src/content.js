@@ -1606,12 +1606,19 @@
     });
   }
 
+  function parsePaladinsHtml(html) {
+    // Содержимое шаблона остаётся вне страницы и не загружает изображения.
+    const template = document.createElement('template');
+    template.innerHTML = html;
+    return template.content;
+  }
+
   function parsePaladinsMap(html, dungeon, floor) {
-    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const doc = parsePaladinsHtml(html);
     const cells = new Map();
     let maxCol = 0;
     let maxRow = 0;
-    const walker = doc.createTreeWalker(doc.body || doc, NodeFilter.SHOW_COMMENT);
+    const walker = document.createTreeWalker(doc, NodeFilter.SHOW_COMMENT);
 
     while (walker.nextNode()) {
       const comment = walker.currentNode;
@@ -1667,7 +1674,7 @@
   }
 
   function parseGuidePage(html, guide) {
-    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const doc = parsePaladinsHtml(html);
     if (guide.type === 'intro') return parseSectionGuidePage(doc, guide, 'intro');
     if (guide.type === 'floor') return parseSectionGuidePage(doc, guide, 'floor');
     if (guide.type === 'npc') return parseSectionGuidePage(doc, guide, 'npc');
@@ -1705,7 +1712,7 @@
     }
 
     if (!result.length) {
-      const text = cleanText(doc.body ? doc.body.textContent : html);
+      const text = cleanText(doc.textContent || '');
       result.push({
         type: guide.type,
         sourceTitle: guide.title,
@@ -1868,7 +1875,7 @@
   }
 
   function extractArticleText(doc) {
-    const bodyText = cleanText(doc.body ? doc.body.textContent : '');
+    const bodyText = cleanText(doc.textContent || '');
     if (!bodyText) return '';
     const startMarkers = ['» Подземелья » Грибница', 'Подземелья » Грибница'];
     let start = -1;
@@ -2465,7 +2472,7 @@
     }
     const rows = stats.slice(0, 80).map(item => {
       const known = findKnownDropItem(item.name);
-      const image = known && known.image ? `<img src="${escapeAttr(known.image)}" alt="" loading="lazy" decoding="async">` : '<span class="bkpm-loot-empty-icon"></span>';
+      const image = known && known.image ? `<img src="${escapeAttr(paladinsImageUrl(known.image))}" alt="" loading="lazy" decoding="async">` : '<span class="bkpm-loot-empty-icon"></span>';
       const label = known && known.href
         ? `<a href="${escapeAttr(known.href)}" target="_blank" rel="noreferrer">${escapeHtml(item.name)}</a>`
         : `<span>${escapeHtml(item.name)}</span>`;
@@ -2526,7 +2533,7 @@
     const shortName = eventPreview.name || (cell.names[0] ? shortLabel(cell.names[0]) : '');
     const iconSrc = getCellIconSrc(cell, eventPreview);
     return `<button type="button" tabindex="-1" class="${classes}" data-coord="${escapeAttr(cell.coord)}" style="grid-column:${cell.col};grid-row:${cell.row}">
-      ${iconSrc ? `<span class="bkpm-cell-event-icon"><img src="${escapeAttr(iconSrc)}" alt="${escapeAttr(shortName || labelCellKind(cell.kind))}" loading="lazy" decoding="async"></span>` : ''}
+      ${iconSrc ? `<span class="bkpm-cell-event-icon"><img src="${escapeAttr(paladinsImageUrl(iconSrc))}" alt="${escapeAttr(shortName || labelCellKind(cell.kind))}" loading="lazy" decoding="async"></span>` : ''}
       ${context.clearedMonsterSet && context.clearedMonsterSet.has(cell.coord) ? '<span class="bkpm-clear-cross" aria-label="Зачищено"></span>' : ''}
       ${boss ? '<span class="bkpm-boss-badge" aria-label="Босс">★</span>' : ''}
       <span class="bkpm-coord">${escapeHtml(cell.label || cell.coord)}</span>
@@ -2538,6 +2545,19 @@
   function getCellIconSrc(cell, preview) {
     if (cell && ['monster', 'npc', 'object'].includes(cell.kind) && preview && preview.image && !isGenericCellImage(preview.image)) return preview.image;
     return '';
+  }
+
+  function paladinsImageUrl(url) {
+    const value = String(url || '').trim();
+    if (!/^(?:https?:)?\/\/(?:[^/]+\.)?paladins\.ru(?=[:/?#]|$)/i.test(value)) return value;
+
+    // В данных могут встречаться старые HTTP-ссылки и ссылки без схемы.
+    const original = new URL(value, 'https://lib.paladins.ru/');
+    const key = `https://${original.hostname}${original.pathname}${original.search}`;
+    const file = (window.BK_PALADINS_IMAGES || {})[key];
+    if (file) return safeRuntimeUrl(`assets/paladins/${file}`);
+    // Если справочник добавил новое изображение, покажем встроенный значок.
+    return mapIconUrl('pin');
   }
 
   function isGenericCellImage(url) {
@@ -3030,7 +3050,7 @@
 
   function renderMapCategoryCard(row, category) {
     const cell = row.cell;
-    const image = row.image ? `<img class="bkpm-list-image" src="${escapeAttr(row.image)}" alt="" loading="lazy" decoding="async">` : '<span class="bkpm-list-image is-empty"></span>';
+    const image = row.image ? `<img class="bkpm-list-image" src="${escapeAttr(paladinsImageUrl(row.image))}" alt="" loading="lazy" decoding="async">` : '<span class="bkpm-list-image is-empty"></span>';
     const drops = row.dropItems && row.dropItems.length
       ? category === 'caches' ? renderFullDropItems(row.dropItems) : renderCompactDropItems(row.dropItems)
       : '<div class="bkpm-muted small">Дроп не указан.</div>';
@@ -3064,7 +3084,7 @@
     if (!list.length) return '';
     const body = list.map(item => {
       if (!item || !item.name) return '';
-      const image = item.image ? `<img src="${escapeAttr(item.image)}" alt="" loading="lazy" decoding="async">` : '';
+      const image = item.image ? `<img src="${escapeAttr(paladinsImageUrl(item.image))}" alt="" loading="lazy" decoding="async">` : '';
       const name = escapeHtml(item.name);
       return item.href
         ? `<a class="bkpm-drop-item" href="${escapeAttr(item.href)}" target="_blank" rel="noreferrer">${image}<span>${name}</span></a>`
@@ -3078,7 +3098,7 @@
     if (!list.length) return '';
     const visible = list.slice(0, 5).map(item => {
       if (!item || !item.name) return '';
-      const image = item.image ? `<img src="${escapeAttr(item.image)}" alt="" loading="lazy" decoding="async">` : '';
+      const image = item.image ? `<img src="${escapeAttr(paladinsImageUrl(item.image))}" alt="" loading="lazy" decoding="async">` : '';
       const name = escapeHtml(item.name);
       return item.href
         ? `<a class="bkpm-drop-item" href="${escapeAttr(item.href)}" target="_blank" rel="noreferrer">${image}<span>${name}</span></a>`
@@ -3124,7 +3144,7 @@
     }).join('') : '';
 
     if (dropHtml) return dropHtml;
-    const image = cell.image ? `<img class="bkpm-entry-image" src="${escapeAttr(cell.image)}" alt="" loading="lazy" decoding="async">` : '';
+    const image = cell.image ? `<img class="bkpm-entry-image" src="${escapeAttr(paladinsImageUrl(cell.image))}" alt="" loading="lazy" decoding="async">` : '';
     return `<article class="bkpm-guide-entry bkpm-cell-event-card">
       <div class="bkpm-entry-main">
         ${image}
@@ -3162,7 +3182,7 @@
   }
 
   function renderGuideEntryCard(entry) {
-    const image = entry.image ? `<img class="bkpm-entry-image" src="${escapeAttr(entry.image)}" alt="" loading="lazy" decoding="async">` : '';
+    const image = entry.image ? `<img class="bkpm-entry-image" src="${escapeAttr(paladinsImageUrl(entry.image))}" alt="" loading="lazy" decoding="async">` : '';
     return `<article class="bkpm-guide-entry">
       <div class="bkpm-entry-head">
         <b>${escapeHtml(entry.name)}</b>
@@ -3181,7 +3201,7 @@
   function renderCellEventCard(entry, cell) {
     const name = entry && entry.name ? entry.name : cell && cell.names && cell.names[0] ? cell.names[0] : cell ? cell.label || cell.coord : '';
     const imageUrl = entry && entry.image ? entry.image : cell && cell.image ? cell.image : '';
-    const image = imageUrl ? `<img class="bkpm-entry-image" src="${escapeAttr(imageUrl)}" alt="" loading="lazy" decoding="async">` : '';
+    const image = imageUrl ? `<img class="bkpm-entry-image" src="${escapeAttr(paladinsImageUrl(imageUrl))}" alt="" loading="lazy" decoding="async">` : '';
     const drops = renderDropItems(entry);
     return `<article class="bkpm-guide-entry bkpm-cell-event-card">
       <div class="bkpm-entry-main">
@@ -3198,7 +3218,7 @@
     const items = getDisplayDropItems(entry && Array.isArray(entry.dropItems) ? entry.dropItems : [], 12);
     if (items.length) {
       return `<div class="bkpm-drop-list">${items.map(item => {
-        const image = item.image ? `<img src="${escapeAttr(item.image)}" alt="" loading="lazy" decoding="async">` : '';
+        const image = item.image ? `<img src="${escapeAttr(paladinsImageUrl(item.image))}" alt="" loading="lazy" decoding="async">` : '';
         const name = escapeHtml(item.name);
         return item.href
           ? `<a class="bkpm-drop-item" href="${escapeAttr(item.href)}" target="_blank" rel="noreferrer">${image}<span>${name}</span></a>`
@@ -6260,7 +6280,7 @@
   }
 
   function extractDropItems(html, baseUrl) {
-    const doc = new DOMParser().parseFromString(`<div>${String(html || '')}</div>`, 'text/html');
+    const doc = parsePaladinsHtml(`<div>${String(html || '')}</div>`);
     const items = [];
     const seen = new Set();
     for (const link of Array.from(doc.querySelectorAll('a[href*="/items/"], a[class*="guide_link"]'))) {
